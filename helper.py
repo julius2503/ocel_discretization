@@ -4,6 +4,8 @@ import pm4py
 from pm4py import OCEL
 from typing import List, Dict, Any
 
+def allowed_file(filename: str, allowed_extensions: str) -> bool:
+    return '.' in filename and filename.split(".")[1] in allowed_extensions
 
 def load_ocel(file_path: str) -> OCEL:
     file_type = file_path.split(".")[1]
