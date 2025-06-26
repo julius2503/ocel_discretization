@@ -17,7 +17,18 @@ def load_ocel(file_path: str) -> OCEL:
             return pm4py.read_ocel2_sqlite(file_path=file_path)
         case _: 
             return pm4py.read_ocel2(file_path=file_path)
+        
+def get_attribute_values(ocel: OCEL, attribute, qualifier, type):
+    match type:
+        case "EVENT":
+            values = ocel.events[ocel.events["ocel:activity"] == qualifier][attribute].unique().tolist()
+            return [{"value": str(v)} for v in values]
+        
+        case "OBJECT":
+            values = ocel.objects[ocel.objects["ocel:type"] == qualifier][attribute].unique().tolist()
+            return [{"value": str(v)} for v in values]
 
+        
 def get_attributes(ocel: OCEL) -> List[List[str]]:
     events = ocel.events
     objects = ocel.objects
@@ -30,51 +41,140 @@ def get_attributes(ocel: OCEL) -> List[List[str]]:
     result = []
     
     for attr in attributes:
-        non_na_activities = events[events[attr].notna()]['ocel:activity'].unique()
+        attribute = attr
+        qualifier = events[events[attr].notna()]['ocel:activity'].unique()
+        type = "EVENT"
         
-        for activity in non_na_activities:
-            result.append([activity, "EVENT", attr])
+        for activity in qualifier:
+            result.append(
+                {
+                    "attribute": attribute,
+                    "type": type,
+                    "qualifier": activity,
+                    "related" : get_related_attributes(ocel, attribute, type, activity)
+                }
+            )
 
     attributes = [col for col in objects.columns if col not in object_cols]
     
     for attr in attributes:
-        non_na_activities = objects[objects[attr].notna()]['ocel:type'].unique()
+        attribute = attr
+        qualifier = objects[objects[attr].notna()]['ocel:type'].unique()
+        type = "OBJECT"
         
-        for activity in non_na_activities:
-            result.append([activity, "OBJECT" ,attr])
+        for activity in qualifier:
+            result.append(
+                {
+                    "attribute": attribute,
+                    "type": type,
+                    "qualifier": activity,
+                    "related" : get_related_attributes(ocel, attribute, type, activity)
+                }
+            )
 
-    return sorted(result)
+    return result
 
-def get_related_attributes(ocel:OCEL, attribute:str) -> List[str]:
-    name, type, attr = attribute.split(",")
+def get_attribute_list(ocel: OCEL):
+    events = ocel.events
+    objects = ocel.objects
 
-    attributes = get_attributes(ocel=ocel)
+    event_cols = {'ocel:eid', 'ocel:timestamp', 'ocel:activity'}
+    object_cols = {'ocel:oid', 'ocel:timestamp', 'ocel:type'}
+
+    attributes = [col for col in events.columns if col not in event_cols]
+    
+    result = []
+    
+    for attr in attributes:
+        attribute = attr
+        qualifier = events[events[attr].notna()]['ocel:activity'].unique()
+        type = "EVENT"
+        
+        for activity in qualifier:
+            result.append(
+                {
+                    "attribute": attribute,
+                    "type": type,
+                    "qualifier": activity,
+                }
+            )
+
+    attributes = [col for col in objects.columns if col not in object_cols]
+    
+    for attr in attributes:
+        attribute = attr
+        qualifier = objects[objects[attr].notna()]['ocel:type'].unique()
+        type = "OBJECT"
+        
+        for activity in qualifier:
+            result.append(
+                {
+                    "attribute": attribute,
+                    "type": type,
+                    "qualifier": activity
+                }
+            )
+
+    return result
+
+def get_related_attributes(ocel:OCEL, attribute:str, type: str, qualifier: str) -> List[str]:
+
+    attributes = get_attribute_list(ocel=ocel)
+
     related_object_types = []
 
     if type == "EVENT":
-        for value in [value[2] for value in attributes if value[0] == name]:
-            if value != attr:
-                related_object_types.append(f"{name}, 'EVENT', {value}")
+        for value in [value["attribute"] for value in attributes if value["qualifier"] == qualifier]:
+            if value != attribute:
+                related_object_types.append(
+                    {
+                        "attribute": value,
+                        "type": "EVENT",
+                        "qualifier": qualifier,
+                        "vals": get_attribute_values(ocel, value, qualifier, "EVENT")
+                    }
+                )
 
-        e2o = ocel.relations[ocel.relations["ocel:activity"] == name]
+        e2o = ocel.relations[ocel.relations["ocel:activity"] == qualifier]
         related_objects = e2o["ocel:type"].unique()
 
         for object in related_objects:
-            for value in [value[2] for value in attributes if value[0] == object]:
-                related_object_types.append(f"{object}, 'OBJECT', {value}")
+            for value in [value["attribute"] for value in attributes if value["qualifier"] == object]:
+                related_object_types.append(
+                    {
+                        "attribute": value,
+                        "type": "OBJECT",
+                        "qualifier": object,
+                        "vals": get_attribute_values(ocel, value, object, "OBJECT")
+                    }
+                )
 
     elif type == "OBJECT":
-        for value in [value[2] for value in attributes if value[0] == name]:
-            if value != attr:
-                related_object_types.append(f"{name}, 'OBJECT', {value}")
+        for value in [value["attribute"] for value in attributes if value["qualifier"] == qualifier]:
+            if value != attribute:
+                related_object_types.append(
+                    {
+                        "attribute": value,
+                        "type": type,
+                        "qualifier": qualifier,
+                        "vals": get_attribute_values(ocel, value, qualifier, type)
+                    }
+                )
 
         o2o = o2o_mapping(ocel=ocel)
-        o2o = o2o[o2o["source"] == name]
+        o2o = o2o[o2o["source"] == qualifier]
         related_objects = o2o["target"].unique()
         for object in related_objects:
-            for value in [value[2] for value in attributes if value[0] == object]:
-                related_object_types.append(f"{object}, 'OBJECT', {value}")
-    
+            for value in [value["attribute"] for value in attributes if value["qualifier"] == object]:
+                related_object_types.append(
+                    {
+                        "attribute": value,
+                        "type": type,
+                        "qualifier": object,
+                        "vals": get_attribute_values(ocel, value, object, type)
+                    }
+                )
+
     return related_object_types
 
 def o2o_mapping(ocel: OCEL) -> pd.DataFrame:
@@ -90,20 +190,87 @@ def o2o_mapping(ocel: OCEL) -> pd.DataFrame:
 
     return o2o_relations
 
-def run_equal_frequency_binning(ocel:OCEL, attribute:str, params: int | str, related_attr:List[str]) -> Dict[str, Any]:
-    name, type, attr = attribute.split(",")
-    
+def not_numeric(ocel:OCEL, data):
+    attribute = data["attribute"]
+    type = data["type"]
+    qualifier = data["qualifier"]
+
     match type:
         case "EVENT":
-            events = ocel.events[ocel.events["ocel:activity"] == name]
-            values = sorted(events[attr].values.tolist())
+            values = ocel.events[ocel.events["ocel:activity"] == qualifier][attribute].unique()
         case "OBJECT":
-            objects = ocel.objects[ocel.objects["ocel:type"] == name]
-            values = sorted(objects[attr].values.tolist())
-        case _:
-            raise Exception(f"{type} ist weder Event noch Object!")
+            values = ocel.objects[ocel.objects["ocel:type"] == qualifier][attribute].unique()
 
-    partitions = np.array_split(values, int(params))
+    items = []
+    for value in values:
+        items.append([{
+            "attribute": attribute, 
+            "type": type,
+            "qualifier": qualifier,
+            "value": str(value)
+    }])
+    return items
+
+def split_numerical_attribute(ocel: OCEL, type, splits):
+    match type:
+        case "EVENT":
+            events = ocel.events
+            objects = ocel.objects
+            relations = ocel.relations
+
+            for split in splits:
+                if split["selected_value"] is None:
+                    continue
+                match split["type"]:
+                    case "EVENT":
+                        events = events[events[split["attribute"]].astype(str) == split["selected_value"]]
+
+                    case "OBJECT":
+                        fitting_oids = objects[(objects["ocel:type"] == split["qualifier"]) & (objects[split["attribute"]].astype(str) == split["selected_value"])]["ocel:oid"].tolist()
+                        fitting_eids = relations[relations["ocel:oid"].isin(fitting_oids)]["ocel:eid"].unique().tolist()
+                        events = events[events["ocel:eid"].isin(fitting_eids)]
+                    
+                    case _:
+                        raise Exception("Weder EVENT noch OBJECTS")
+
+            return events
+        
+        case "OBJECT":
+            objects = ocel.objects
+
+            for split in splits:
+                objects = objects[(objects["ocel:type"] == split["qualifier"]) & (objects[split["attribute"]].astype(str) == split["selected_value"])]
+
+            return objects
+        
+        case _:
+            raise Exception("Weder EVENT noch OBJECTS")
+
+
+def run_equal_frequency_binning(ocel:OCEL, data, bins):
+    attribute = data["attribute"]
+    type = data["type"]
+    qualifier = data["qualifier"]
+    related = [related for related in data["related"] if related["selected"]]
+    splits = data["split_attributes"]
+
+    partitions = []
+
+    match type:
+        case "EVENT":
+            events = split_numerical_attribute(ocel, type, splits)
+
+            values = events[events["ocel:activity"] == qualifier][attribute]
+
+            partitions = np.array_split(sorted(events[attribute].values.tolist()), bins)
+
+        case "OBJECT":
+            objects = split_numerical_attribute(ocel, type, splits)
+
+            values = objects[objects["ocel:type"] == qualifier][attribute]
+
+            partitions = np.array_split(sorted(values.values.tolist()), bins)
+    
     intervals = []
     prev_end = None
     
@@ -120,18 +287,60 @@ def run_equal_frequency_binning(ocel:OCEL, attribute:str, params: int | str, rel
         intervals.append((current_start, current_end))
         prev_end = current_end
 
-    interval_objects = [
-        pd.Interval(left=start, right=end, closed='right') 
-        for start, end in intervals
-    ]
-
-    return {
-        f"{name}-{attr}":{
-            "type": type,
-            "count": len(values),
-            "intervals": interval_objects
+    items = [[{ 
+        "attribute": attribute, 
+        "type": type,
+        "qualifier": qualifier,
+        "interval": {
+            "start": start,
+            "end": end
         }
-    }
+    }] for start, end in intervals]
+
+    for attribute in related:
+        match type:
+            case "EVENT":
+                match attribute["type"]:
+                    case "EVENT":
+                        values = ocel.events[ocel.events["ocel:activity"] == attribute["qualifier"]][attribute["attribute"]].unique()
+                        new_items = []
+                        for value in values:
+                            for item in items:
+                                new_items.append(item + [{
+                                    "attribute": attribute, 
+                                    "type": "EVENT",
+                                    "qualifier": qualifier,
+                                    "value": str(value)
+                                    }])
+                        items = new_items                   
+                    
+                    case "OBJECT":
+                        values = ocel.objects[ocel.objects["ocel:type"] == attribute["qualifier"]][attribute["attribute"]].unique()
+                        new_items = []
+                        for value in values:
+                            for item in items:
+                                new_items.append(item + [{
+                                    "attribute": attribute, 
+                                    "type": "OBJECT",
+                                    "qualifier": qualifier,
+                                    "value": str(value)
+                                    }])
+                        items = new_items 
+            
+            case "OBJECT":
+                values = ocel.objects[ocel.objects["ocel:type"] == attribute["qualifier"]][attribute["attribute"]].unique()
+                new_items = []
+                for value in values:
+                    for item in items:
+                        new_items.append(item + [{
+                            "attribute": attribute, 
+                            "type": "OBJECT",
+                            "qualifier": qualifier,
+                            "value": str(value)
+                            }])
+                items = new_items
+
+    return items
 
 def run_equal_width_binning(ocel, attribute, params):
     pass

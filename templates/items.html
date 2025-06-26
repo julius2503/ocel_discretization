@@ -1,83 +1,255 @@
 <!DOCTYPE html>
 <html lang="de">
-<head>
-    <meta charset="UTF-8">
-    <title>Diskretisierung</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        .attribute-card {
-            margin-bottom: 2rem;
-            border-radius: 12px;
-            box-shadow: 0 4px 16px 0 rgba(0,0,0,0.10), 0 1.5px 6px 0 rgba(0,0,0,0.08);
-            padding: 1.5rem 1.5rem 1rem 1.5rem;
-            background: #fff;
-        }
-        .interval-table th, .interval-table td {
-            text-align: center;
-            vertical-align: middle;
-        }
-        .interval-range {
-            font-family: 'Fira Mono', 'Consolas', monospace;
-            font-size: 1.1em;
-            letter-spacing: 0.02em;
-        }
-        .attribute-title {
-            font-size: 1.2rem;
-            font-weight: 600;
-            margin-bottom: 0.5rem;
-        }
-        .badge-interval {
-            background: #e3f2fd;
-            color: #1565c0;
-            font-size: 1em;
-        }
-    </style>
-</head>
-<body>
-<div class="container my-5">
-    <h1 class="mb-4 text-center">Diskretisierung</h1>
+    <head>
+        <meta charset="UTF-8">
+        <title>Diskretisierte Items</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        <script src="https://unpkg.com/htmx.org@2.0.4" integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+" crossorigin="anonymous"></script>
+        <script src="https://unpkg.com/htmx.org/dist/ext/json-enc.js"></script>
+        <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+        <style>
+            .attribute-card {
+                margin-bottom: 2rem;
+                border-radius: 12px;
+                box-shadow: 0 4px 16px 0 rgba(0,0,0,0.10), 0 1.5px 6px 0 rgba(0,0,0,0.08);
+                padding: 1.5rem 1.5rem 1rem 1.5rem;
+                background: #fff;
+            }
+            .interval-table th, .interval-table td {
+                text-align: center;
+                vertical-align: middle;
+            }
+            .interval-range {
+                font-family: 'Fira Mono', 'Consolas', monospace;
+                font-size: 1.1em;
+                letter-spacing: 0.02em;
+            }
+            .attribute-title {
+                font-size: 1.2rem;
+                font-weight: 600;
+                margin-bottom: 0.5rem;
+            }
+            .badge-interval {
+                background: #e3f2fd;
+                color: #1565c0;
+                font-size: 1em;
+            }
+            .interval-value-container {
+                display: flex;
+                flex-direction: column;
+                gap: 0.5rem;
+                align-items: center;
+                justify-content: center;
+            }
+            .value-pill {
+                background-color: #d1ecf1;
+                color: #0c5460;
+                padding: 0.25em 0.8em;
+                border-radius: 12px;
+                font-size: 0.9em;
+                display: inline-block;
+                margin-top: 0.5rem;
+            }
+            #scrollToTopBtn {
+                display: none;
+                position: fixed;
+                bottom: 30px;
+                right: 30px;
+                z-index: 99;
+                border: none;
+                outline: none;
+                background-color: #555;
+                color: white;
+                cursor: pointer;
+                padding: 0;
+                width: 50px;
+                height: 50px;
+                border-radius: 50%;
+                font-size: 22px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                transition: background-color 0.2s;
+            }
+            #scrollToTopBtn:hover {
+                background-color: #333;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container my-5">
+            <a href="{{ url_for('upload_file') }}" class="btn btn-secondary">
+                Neue Analyse starten
+            </a>
+        </div>
 
-    {% for attr in results.attributes %}
-        {% for attr_name, attr_data in attr.items() %}
-            <div class="attribute-card">
-                <div class="attribute-title">{{ attr_name }}</div>
-                <div class="mb-2">
-                    <span class="badge bg-primary">{{ attr_data.type }}</span>
-                    <span class="badge bg-secondary">Anzahl: {{ attr_data.count }}</span>
-                    <span class="badge bg-info text-dark">Intervalle: {{ attr_data.intervals|length }}</span>
+        <form 
+            method="post" 
+            action="/mine" 
+            x-data="{
+                data: {
+                    objective: {
+                        name: 'itemset',
+                        parameters: { min_sup: 0.2 }
+                    }
+                },
+                submitForm() {
+                    fetch(this.$el.action, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(this.data)
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success' && data.redirect_url) {
+                            window.location.href = data.redirect_url;
+                        } else {
+                            alert('Fehler beim Verarbeiten!');
+                        }
+                    });
+                }
+            }"
+            @submit.prevent="submitForm">
+
+            <div class="container my-5">
+                <div class="card mb-4 shadow-sm border-0">
+                    <div class="card-header bg-secondary text-white">
+                        <h5 class="mb-0"><i class="bi bi-bullseye"></i> Objective</h5>
+                    </div>
+                    <div class="card-body">
+                        <select class="form-select mb-3" x-model="data.objective.name">
+                        <option value="itemset">Itemset</option>
+                        <option value="associationrule">AssociationRule</option>
+                        </select>
+                        <div class="objective-parameters">
+                            <template x-if="data.objective.name === 'itemset'">
+                                <div class="ps-4">
+                                <label class="form-label">Min. Support:</label>
+                                <input type="number" class="form-control mb-2" step="0.01" min="0" max="1"
+                                        x-model="data.objective.parameters.min_sup">
+                                </div>
+                            </template>
+                            <template x-if="data.objective.name === 'associationrule'">
+                                <div class="ps-4">
+                                <label class="form-label">Min. Support:</label>
+                                <input type="number" class="form-control mb-2" step="0.01" min="0" max="1"
+                                        x-model="data.objective.parameters.min_sup">
+                                <label class="form-label mt-2">Min. Confidence:</label>
+                                <input type="number" class="form-control mb-2" step="0.01" min="0" max="1"
+                                        x-model="data.objective.parameters.min_conf">
+                                <label class="form-label mt-2">Min. Lift:</label>
+                                <input type="number" class="form-control" step="0.01" min="0"
+                                        x-model="data.objective.parameters.min_lift">
+                                </div>
+                            </template>
+                        </div>
+                    </div>
                 </div>
-                <div class="table-responsive">
-                    <table class="table interval-table table-bordered align-middle">
-                        <thead class="table-light">
-                            <tr>
-                                <th>#</th>
-                                <th>Intervall</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for interval in attr_data.intervals %}
-                                <tr>
-                                    <td>
-                                        <span class="badge badge-interval">{{ loop.index }}</span>
-                                    </td>
-                                    <td class="interval-range">
-                                        {{ interval }}
-                                    </td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                
+                <div  class="text-center">
+                    <button type="submit" class="btn btn-primary">Mining starten</button>
                 </div>
             </div>
-        {% endfor %}
-    {% endfor %}
+        </form>
 
-    <div class="text-center mt-4">
-        <a href="{{ url_for('upload_file') }}" class="btn btn-secondary">
-            Neue Analyse starten
-        </a>
-    </div>
-</div>
-</body>
+        <div class="container my-5">
+
+            <h1 class="mb-4 text-center">Diskretisierte Items</h1>
+
+            {% for item_group in items %}
+                <div class="attribute-card">
+                    <div class="attribute-title">
+                        Item {{ loop.index }}
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table interval-table table-bordered align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>#</th>
+                                    <th>Attribut</th>
+                                    <th>Typ</th>
+                                    <th>Qualifier</th>
+                                    <th>Value</th>
+                                    <th>Aggregate</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for elem in item_group %}
+                                    <tr>
+                                        <td>
+                                            <span class="badge badge-interval">{{ loop.index }}</span>
+                                        </td>
+                                        <td>
+                                            {# Falls Attribut ein verschachteltes Dict ist, zeige dessen Namen #}
+                                            {% if elem.attribute is mapping %}
+                                                {{ elem.attribute.attribute }}
+                                            {% else %}
+                                                {{ elem.attribute }}
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if elem.attribute is mapping %}
+                                                {{ elem.attribute.type }}
+                                            {% else %}
+                                                {{ elem.type }}
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if elem.attribute is mapping %}
+                                                {{ elem.attribute.qualifier }}
+                                            {% else %}
+                                                {{ elem.qualifier }}
+                                            {% endif %}
+                                        </td>
+                                        <td class="interval-value-container">
+                                            {% if elem.interval is defined %}
+                                                <div class="interval-range">
+                                                    [{{ elem.interval.start }}, {{ elem.interval.end }}]
+                                                </div>
+                                            {% endif %}
+                                            {% if elem.value is defined %}
+                                                <div class="value-pill">
+                                                    {{ elem.value }}
+                                                </div>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if elem.attribute is mapping and elem.attribute.aggregate %}
+                                                {{ elem.attribute.aggregate }}
+                                            {% else %}
+                                                –
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+
+        <button id="scrollToTopBtn" title="Nach oben scrollen">↑</button>
+
+        <script>
+            window.onscroll = function() {
+                const btn = document.getElementById('scrollToTopBtn');
+                if (document.body.scrollTop > 20 || document.documentElement.scrollTop > 20) {
+                    btn.style.display = "block";
+                } else {
+                    btn.style.display = "none";
+                }
+            };
+
+            document.getElementById('scrollToTopBtn').onclick = function() {
+                window.scrollTo({
+                    top: 0,
+                    behavior: 'smooth'
+                });
+            };
+        </script>
+
+    </body>
 </html>

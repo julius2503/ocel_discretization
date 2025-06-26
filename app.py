@@ -1,9 +1,10 @@
 import os
-from flask import Flask, flash, request, redirect, render_template, session, url_for
+from flask import Flask, flash, request, redirect, render_template, session, url_for, jsonify
 from werkzeug.utils import secure_filename
 import helper
 import warnings
 from pandas.errors import SettingWithCopyWarning
+import json
 
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=SettingWithCopyWarning)
@@ -47,8 +48,8 @@ def upload_file():
                 try:
                     ocel = helper.load_ocel(file_path)
                     attributes = helper.get_attributes(ocel)
-                    
-                    return render_template('results.html', 
+        
+                    return render_template('select.html', 
                                         filename=filename,
                                         attributes=attributes)
                 except Exception as e:
@@ -63,8 +64,8 @@ def upload_file():
                 try:
                     ocel = helper.load_ocel(file_path)
                     attributes = helper.get_attributes(ocel)
-                    
-                    return render_template('results.html', 
+
+                    return render_template('select.html', 
                                         filename=filename,
                                         attributes=attributes)
                 except Exception as e:
@@ -78,24 +79,14 @@ def upload_file():
     return render_template('index.html', existing_files=existing_files)
 
 
-@app.route('/get_related_attributes')
-def get_related_attributes():
-    attribute = request.args.get('attribute')
-
-    file_path = session.get('current_ocel')
-    if not file_path:
-        flash('Fehler beim Laden des OCEL')
-        return redirect(request.url)
-    ocel = helper.load_ocel(file_path)
-
-    return helper.get_related_attributes(ocel=ocel, attribute=attribute) # type:ignore
-
 @app.route('/process', methods=['POST'])
 def process_attributes():
-    algorithm = request.form.get('algorithm')
-    selected = request.form.getlist('not_numeric')
-    numeric = request.form.getlist('numeric')
-    related = request.form.getlist(f'related_1[]')
+
+    data = request.get_json()
+
+    selected = [attribute for attribute in data['attributes'] if attribute['selected']]
+    numeric = [attribute for attribute in selected if attribute['numeric']]
+    not_numeric = [attribute for attribute in selected if not attribute['numeric']]
 
     file_path = session.get('current_ocel')
     if not file_path:
@@ -103,26 +94,23 @@ def process_attributes():
         return redirect(request.url)
     ocel = helper.load_ocel(file_path)
 
-    results = {
-        "attributes": []
-    }
+    items = []
 
-    match algorithm:
-        case "equal_freq":
-            for i, attribute in enumerate(numeric):
-                params = request.form.get(f"params[{i}][bins]")
-                results["attributes"].append(helper.run_equal_frequency_binning(ocel, attribute, params, related)) # type:ignore
-        case "equal_width":
-            pass
-        case "chi_merge":
-            pass
-        case "kmeans":
-            pass
-        case _:
-            flash(f'Algorithmus {algorithm} konnte nicht gefunden werden!')
-            return redirect(request.url)
+    for attribute in numeric:
+        items.extend(helper.run_equal_frequency_binning(ocel, attribute, int(data["algorithm"]["parameters"]["bins"])))
 
-    return render_template('items.html', results=results)
+        for attribute in not_numeric:
+            items.extend(helper.not_numeric(ocel, attribute))
+
+    session['items'] = items
+
+    return jsonify({"status": "success", "redirect_url": url_for('show_items')})
+
+@app.route('/items')
+def show_items():
+    items = session.get('items')
+    return render_template('items.html', items=items)
+
 
 if __name__ == '__main__':
     app.run(debug=True)
