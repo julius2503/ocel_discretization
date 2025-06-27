@@ -2,7 +2,8 @@ import pandas as pd
 import numpy as np
 import pm4py
 from pm4py import OCEL
-from typing import List, Dict, Any
+from typing import List
+import copy
 
 def allowed_file(filename: str, allowed_extensions: str) -> bool:
     return '.' in filename and filename.split(".")[1] in allowed_extensions
@@ -245,32 +246,116 @@ def split_numerical_attribute(ocel: OCEL, type, splits):
         
         case _:
             raise Exception("Weder EVENT noch OBJECTS")
+        
+def handle_aggregate_attributes(ocel, related_attribute, algorithm, parameters):
+    aggr_attribute = related_attribute["attribute"]
+    aggr_qualifier = related_attribute["qualifier"]
+    aggr_function = related_attribute["aggregate"]
+
+    aggr_relations = ocel.relations[ocel.relations["ocel:type"] == aggr_qualifier]
+    merged = aggr_relations.merge(ocel.objects[["ocel:oid", aggr_attribute]], on="ocel:oid",how="left")
+    avg_prices = merged.groupby("ocel:eid", as_index=False).agg(Aggr=(aggr_attribute, aggr_function)).round({"Aggr": 2})
+                        
+    aggr_ocel = copy.deepcopy(ocel)
+    aggr_ocel.events = aggr_ocel.events.merge(avg_prices, on="ocel:eid", how="left")
+
+    return run_discretization(aggr_ocel.events["Aggr"].dropna().values.tolist(), algorithm, parameters)
 
 
-def run_equal_frequency_binning(ocel:OCEL, data, bins):
+
+def run_itemize(ocel:OCEL, data, algorithm):
     attribute = data["attribute"]
     type = data["type"]
     qualifier = data["qualifier"]
     related = [related for related in data["related"] if related["selected"]]
     splits = data["split_attributes"]
-
-    partitions = []
+    algorithm_name = algorithm["name"]
+    algorithm_parameters = algorithm["parameters"]
 
     match type:
         case "EVENT":
             events = split_numerical_attribute(ocel, type, splits)
 
-            values = events[events["ocel:activity"] == qualifier][attribute]
+            values = events[events["ocel:activity"] == qualifier][attribute].values.tolist()
 
-            partitions = np.array_split(sorted(events[attribute].values.tolist()), bins)
+            intervals = run_discretization(values, algorithm_name, algorithm_parameters)
 
         case "OBJECT":
             objects = split_numerical_attribute(ocel, type, splits)
 
-            values = objects[objects["ocel:type"] == qualifier][attribute]
+            values = objects[objects["ocel:type"] == qualifier][attribute].values.tolist()
 
-            partitions = np.array_split(sorted(values.values.tolist()), bins)
-    
+            intervals = run_discretization(values, algorithm_name, algorithm_parameters)
+
+    items = [[{ 
+        "attribute": attribute, 
+        "type": type,
+        "qualifier": qualifier,
+        "interval": {
+            "start": start,
+            "end": end
+        }
+    }] for start, end in intervals]
+
+    for related_attribute in related:
+        events = ocel.events
+        objects = ocel.objects
+        match type:
+            case "EVENT":
+                match related_attribute["type"]:
+                    case "EVENT":
+                        values = events[events["ocel:activity"] == related_attribute["qualifier"]][related_attribute["attribute"]].unique()
+                        new_items = []
+                        for value in values:
+                            for item in items:
+                                new_items.append(item + [{
+                                    "attribute": related_attribute["attribute"], 
+                                    "type": "EVENT",
+                                    "qualifier": qualifier,
+                                    "value": str(value)
+                                    }])
+                        items = new_items                   
+                    
+                    case "OBJECT":
+                        values = objects[objects["ocel:type"] == related_attribute["qualifier"]][related_attribute["attribute"]].unique().tolist()
+                        if related_attribute["aggregate"]:
+                            values = handle_aggregate_attributes(ocel, related_attribute, algorithm_name, algorithm_parameters)
+                        new_items = []
+                        for value in values:
+                            for item in items:
+                                new_items.append(item + [{
+                                    "attribute": related_attribute["attribute"], 
+                                    "type": "OBJECT",
+                                    "qualifier": qualifier,
+                                    "aggregate": related_attribute["aggregate"],
+                                    "value": str(value)
+                                    }])
+                        items = new_items 
+            
+            case "OBJECT":
+                values = objects[objects["ocel:type"] == related_attribute["qualifier"]][related_attribute["attribute"]].unique()
+                new_items = []
+                for value in values:
+                    for item in items:
+                        new_items.append(item + [{
+                            "attribute": related_attribute["attribute"], 
+                            "type": "OBJECT",
+                            "qualifier": qualifier,
+                            "value": str(value)
+                            }])
+                items = new_items
+
+        print(items)
+    return items
+
+def run_discretization(values, algorithm_name, algorithm_parameters):
+    match algorithm_name:
+        case "equal-freq":
+            bins = algorithm_parameters["bins"]
+            return equal_frequency_binning(values, bins)
+
+def equal_frequency_binning(values, bins):
+    partitions = np.array_split(sorted(values), int(bins))
     intervals = []
     prev_end = None
     
@@ -287,66 +372,16 @@ def run_equal_frequency_binning(ocel:OCEL, data, bins):
         intervals.append((current_start, current_end))
         prev_end = current_end
 
-    items = [[{ 
-        "attribute": attribute, 
-        "type": type,
-        "qualifier": qualifier,
-        "interval": {
-            "start": start,
-            "end": end
-        }
-    }] for start, end in intervals]
+    return intervals
 
-    for attribute in related:
-        match type:
-            case "EVENT":
-                match attribute["type"]:
-                    case "EVENT":
-                        values = ocel.events[ocel.events["ocel:activity"] == attribute["qualifier"]][attribute["attribute"]].unique()
-                        new_items = []
-                        for value in values:
-                            for item in items:
-                                new_items.append(item + [{
-                                    "attribute": attribute, 
-                                    "type": "EVENT",
-                                    "qualifier": qualifier,
-                                    "value": str(value)
-                                    }])
-                        items = new_items                   
-                    
-                    case "OBJECT":
-                        values = ocel.objects[ocel.objects["ocel:type"] == attribute["qualifier"]][attribute["attribute"]].unique()
-                        new_items = []
-                        for value in values:
-                            for item in items:
-                                new_items.append(item + [{
-                                    "attribute": attribute, 
-                                    "type": "OBJECT",
-                                    "qualifier": qualifier,
-                                    "value": str(value)
-                                    }])
-                        items = new_items 
-            
-            case "OBJECT":
-                values = ocel.objects[ocel.objects["ocel:type"] == attribute["qualifier"]][attribute["attribute"]].unique()
-                new_items = []
-                for value in values:
-                    for item in items:
-                        new_items.append(item + [{
-                            "attribute": attribute, 
-                            "type": "OBJECT",
-                            "qualifier": qualifier,
-                            "value": str(value)
-                            }])
-                items = new_items
-
-    return items
-
-def run_equal_width_binning(ocel, attribute, params):
+def equal_width_binning(ocel, attribute, params):
     pass
 
-def run_chi_merge_binning(ocel, attribute, params):
+def chi_merge_binning(ocel, attribute, params):
     pass
 
-def run_kmeans_clustering(ocel, attribute, params):
+def kmeans_clustering(ocel, attribute, params):
+    pass
+
+def frequent_itemsets(ocel, items, parameters):
     pass

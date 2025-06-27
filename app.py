@@ -97,19 +97,47 @@ def process_attributes():
     items = []
 
     for attribute in numeric:
-        items.extend(helper.run_equal_frequency_binning(ocel, attribute, int(data["algorithm"]["parameters"]["bins"])))
+        items.extend(helper.run_itemize(ocel, attribute, data["algorithm"]))
 
-        for attribute in not_numeric:
-            items.extend(helper.not_numeric(ocel, attribute))
+    for attribute in not_numeric:
+        items.extend(helper.not_numeric(ocel, attribute))
 
-    session['items'] = items
+    with open("items.json", "w") as f:
+        json.dump(items, f)
 
     return jsonify({"status": "success", "redirect_url": url_for('show_items')})
 
 @app.route('/items')
 def show_items():
-    items = session.get('items')
+    with open("items.json", "r") as f:
+        items = json.load(f)
     return render_template('items.html', items=items)
+
+@app.route('/mine', methods=['POST'])
+def mine():
+
+    data = request.get_json()
+
+
+    with open("items.json", "r") as f:
+        items = json.load(f)
+    
+    objective = data["objective"]["name"]
+    parameters = data["objective"]["parameters"]
+
+    match objective:
+        case "itemset":
+            pass
+            
+
+
+    return jsonify({"status": "success", "redirect_url": url_for('show_objective')})
+
+@app.route('/result')
+def show_objective():
+    return render_template('frequent_itemsets.html')
+
+
 
 
 if __name__ == '__main__':

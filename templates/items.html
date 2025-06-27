@@ -216,8 +216,8 @@
                                             {% endif %}
                                         </td>
                                         <td>
-                                            {% if elem.attribute is mapping and elem.attribute.aggregate %}
-                                                {{ elem.attribute.aggregate }}
+                                            {% if elem.aggregate is defined%}
+                                                {{ elem.aggregate }}
                                             {% else %}
                                                 –
                                             {% endif %}
