@@ -19,6 +19,12 @@
             method="post" 
             action="/process" 
             x-data="{
+                defaultParameters: {
+                    'equal-freq': { bins: 5 },
+                    'equal-width': { bins: 5 },
+                    'chi-merge': { labels: [], max_interval: 5, significance: 0.05 },
+                    'k-means': { clusters: 3, max_iter: -1 }
+                },
                 data: {
                     algorithm: {
                         name: 'equal-freq',
@@ -49,6 +55,11 @@
                         {% endfor %}
                     ]
                 },
+                init() {
+                    this.$watch('data.algorithm.name', (newAlg) => {
+                        this.data.algorithm.parameters = JSON.parse(JSON.stringify(this.defaultParameters[newAlg]));
+                    });
+                },
                 submitForm() {
                     fetch(this.$el.action, {
                         method: 'POST',
@@ -75,22 +86,56 @@
                     <select class="form-select mb-3" x-model="data.algorithm.name">
                     <option value="equal-freq">Equal-Frequency-Binning</option>
                     <option value="equal-width">Equal-Width-Binning</option>
+                    <option value="chi-merge">ChiMerge</option>
+                    <option value="k-means">k-Means</option>
                     </select>
                     <div class="algorithm-parameters">
-                    <template x-if="data.algorithm.name === 'equal-freq'">
-                        <div class="ps-4">
-                        <label class="form-label">Standard Bins:</label>
-                        <input type="number" class="form-control" min="1"
-                                x-model="data.algorithm.parameters.bins">
-                        </div>
-                    </template>
-                    <template x-if="data.algorithm.name === 'equal-width'">
-                        <div class="ps-4">
-                        <label class="form-label">Standard Width:</label>
-                        <input type="number" class="form-control" min="0.01" step="0.01"
-                                x-model="data.algorithm.parameters.width">
-                        </div>
-                    </template>
+                        <template x-if="data.algorithm.name === 'equal-freq'">
+                            <div class="ps-4">
+                                <label class="form-label">Bins:</label>
+                                <input type="number" class="form-control" min="1"
+                                    x-model="data.algorithm.parameters.bins">
+                            </div>
+                        </template>
+                        <template x-if="data.algorithm.name === 'equal-width'">
+                            <div class="ps-4">
+                                <label class="form-label">Bins:</label>
+                                <input type="number" class="form-control" min="0.01" step="0.01"
+                                    x-model="data.algorithm.parameters.bins">
+                            </div>
+                        </template>
+                        <template x-if="data.algorithm.name === 'chi-merge'">
+                            <div class="ps-4">
+                                <div class="mb-3">
+                                <label class="form-label">Labels (Zielattribute):</label>
+                                <select class="form-select" multiple x-model="data.algorithm.parameters.labels" x-multiselect>
+                                    <template x-for="attr in data.attributes">
+                                    <option :value="attr.attribute" x-text="attr.attribute + ' (' + attr.type + ')'"></option>
+                                    </template>
+                                </select>
+                                </div>
+                                <div class="mb-3">
+                                <label class="form-label">Maximale Intervalle:</label>
+                                <input type="number" class="form-control" min="1"
+                                        x-model="data.algorithm.parameters.max_interval">
+                                </div>
+                                <div class="mb-3">
+                                <label class="form-label">Signifikanzniveau (0-1):</label>
+                                <input type="number" class="form-control" min="0.01" max="0.99" step="0.01"
+                                        x-model="data.algorithm.parameters.significance">
+                                </div>
+                            </div>
+                        </template>
+                        <template x-if="data.algorithm.name === 'k-means'">
+                            <div class="ps-4">
+                                <label class="form-label">Cluster:</label>
+                                <input type="number" class="form-control" min="2"
+                                    x-model="data.algorithm.parameters.clusters">
+                                <label class="form-label mt-2">Max Iterationen:</label>
+                                <input type="number" class="form-control" min="-1"
+                                    x-model="data.algorithm.parameters.max_iter">
+                            </div>
+                        </template>
                     </div>
                 </div>
             </div>
@@ -165,6 +210,15 @@
                                         x-model="data.algorithm.parameters.width">
                                 </div>
                             </div>
+                            <template x-if="data.algorithm.name === 'chi-merge'">
+                            <div class="row">
+                                <div class="col-6">
+                                <label class="form-label">Standard Bins:</label>
+                                <input type="number" class="form-control" min="1"
+                                        x-model="data.algorithm.parameters.bins">
+                                </div>
+                            </div>
+                            </template>
                             </template>
                         </div>
 
@@ -291,6 +345,16 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         }
     });
+});
+
+document.addEventListener('alpine:init', () => {
+    Alpine.data('multiselect', () => ({
+        init() {
+            this.$nextTick(() => {
+                // Multiselect-Initialisierung
+            });
+        }
+    }));
 });
 </script>
 </html>

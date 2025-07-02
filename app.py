@@ -118,18 +118,17 @@ def mine():
 
     data = request.get_json()
 
+    file_path = session.get('current_ocel')
+    if not file_path:
+        flash('Fehler beim Laden des OCEL')
+        return redirect(request.url)
+    ocel = helper.load_ocel(file_path)
 
     with open("items.json", "r") as f:
         items = json.load(f)
     
     objective = data["objective"]["name"]
     parameters = data["objective"]["parameters"]
-
-    match objective:
-        case "itemset":
-            pass
-            
-
 
     return jsonify({"status": "success", "redirect_url": url_for('show_objective')})
 

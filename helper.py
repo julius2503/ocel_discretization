@@ -4,6 +4,9 @@ import pm4py
 from pm4py import OCEL
 from typing import List
 import copy
+import chimerge
+from scipy.stats import chi2
+from sklearn.cluster import KMeans
 
 def allowed_file(filename: str, allowed_extensions: str) -> bool:
     return '.' in filename and filename.split(".")[1] in allowed_extensions
@@ -254,12 +257,12 @@ def handle_aggregate_attributes(ocel, related_attribute, algorithm, parameters):
 
     aggr_relations = ocel.relations[ocel.relations["ocel:type"] == aggr_qualifier]
     merged = aggr_relations.merge(ocel.objects[["ocel:oid", aggr_attribute]], on="ocel:oid",how="left")
-    avg_prices = merged.groupby("ocel:eid", as_index=False).agg(Aggr=(aggr_attribute, aggr_function)).round({"Aggr": 2})
+    avg = merged.groupby("ocel:eid", as_index=False).agg(Aggr=(aggr_attribute, aggr_function)).round({"Aggr": 2})
                         
     aggr_ocel = copy.deepcopy(ocel)
-    aggr_ocel.events = aggr_ocel.events.merge(avg_prices, on="ocel:eid", how="left")
+    aggr_ocel.events = aggr_ocel.events.merge(avg, on="ocel:eid", how="left")
 
-    return run_discretization(aggr_ocel.events["Aggr"].dropna().values.tolist(), algorithm, parameters)
+    return run_discretization(ocel,aggr_ocel.events["Aggr"].dropna().values.tolist(), aggr_ocel.events, algorithm, parameters)
 
 
 
@@ -278,14 +281,14 @@ def run_itemize(ocel:OCEL, data, algorithm):
 
             values = events[events["ocel:activity"] == qualifier][attribute].values.tolist()
 
-            intervals = run_discretization(values, algorithm_name, algorithm_parameters)
+            intervals = run_discretization(ocel, values, events[events["ocel:activity"] == qualifier], algorithm_name, algorithm_parameters)
 
         case "OBJECT":
             objects = split_numerical_attribute(ocel, type, splits)
 
             values = objects[objects["ocel:type"] == qualifier][attribute].values.tolist()
 
-            intervals = run_discretization(values, algorithm_name, algorithm_parameters)
+            intervals = run_discretization(ocel, values, objects[objects["ocel:type"] == qualifier] ,algorithm_name, algorithm_parameters)
 
     items = [[{ 
         "attribute": attribute, 
@@ -344,15 +347,24 @@ def run_itemize(ocel:OCEL, data, algorithm):
                             "value": str(value)
                             }])
                 items = new_items
-
-        print(items)
     return items
 
-def run_discretization(values, algorithm_name, algorithm_parameters):
+def run_discretization(ocel, values, events, algorithm_name, algorithm_parameters):
     match algorithm_name:
         case "equal-freq":
-            bins = algorithm_parameters["bins"]
+            bins = int(algorithm_parameters["bins"])
             return equal_frequency_binning(values, bins)
+        case "equal-width":
+            bins = int(algorithm_parameters["bins"])
+            return equal_width_binning(values, bins)
+        case "chi-merge":
+            labels = algorithm_parameters["labels"]
+            interval = int(algorithm_parameters["max_interval"])
+            significance = float(algorithm_parameters["significance"])
+            return chi_merge_binning(values, events, labels, interval, significance)
+        case "k-means":
+            cluster = int(algorithm_parameters["clusters"])
+            return kmeans_clustering(values, cluster)
 
 def equal_frequency_binning(values, bins):
     partitions = np.array_split(sorted(values), int(bins))
@@ -374,14 +386,80 @@ def equal_frequency_binning(values, bins):
 
     return intervals
 
-def equal_width_binning(ocel, attribute, params):
-    pass
+def equal_width_binning(values, n_bins):
+    values = np.array(values)
+    min_val = float(values.min())
+    max_val = float(values.max())
+    bin_width = (max_val - min_val) / n_bins
+    bins = [min_val + i * bin_width for i in range(n_bins)]
+    
+    intervals = []
+    for i in range(n_bins):
+        start = bins[i]
+        end = bins[i+1] if i < n_bins-1 else max_val
+        intervals.append((int(start), int(end)))
+    
+    return intervals
 
-def chi_merge_binning(ocel, attribute, params):
-    pass
 
-def kmeans_clustering(ocel, attribute, params):
-    pass
+def chi_merge_binning(values, events, labels, n_intervals=6, alpha=0.1, min_gap=1.0):
+    labels = events[labels[0]].astype(str).tolist()
 
-def frequent_itemsets(ocel, items, parameters):
-    pass
+    intervals = chimerge.initialize_intervals(values, labels)
+    all_labels = sorted(list(set(labels)))
+    df = len(all_labels) - 1
+    threshold = chi2.ppf(1 - alpha, df) if df > 0 else 0
+
+    while len(intervals) > n_intervals:
+        min_chi2, min_idx = float('inf'), -1
+        for i in range(len(intervals) - 1):
+            chi2_val = chimerge.compute_chi2(intervals[i], intervals[i+1], all_labels)
+            if chi2_val < min_chi2:
+                min_chi2, min_idx = chi2_val, i
+        if min_chi2 > threshold:
+            break
+        merged = chimerge.merge_intervals(intervals[min_idx], intervals[min_idx+1])
+        intervals = intervals[:min_idx] + [merged] + intervals[min_idx+2:]
+    
+    while len(intervals) > n_intervals:
+        min_chi2, min_idx = float('inf'), -1
+        for i in range(len(intervals) - 1):
+            chi2_val = chimerge.compute_chi2(intervals[i], intervals[i+1], all_labels)
+            if chi2_val < min_chi2:
+                min_chi2, min_idx = chi2_val, i
+        merged = chimerge.merge_intervals(intervals[min_idx], intervals[min_idx+1])
+        intervals = intervals[:min_idx] + [merged] + intervals[min_idx+2:]
+    
+    cut_points = sorted(set(interval['end'] for interval in intervals[:-1]))
+    cut_points = [float(cp) for cp in cut_points]
+    min_val, max_val = min(values), max(values)
+    intervals = []
+    if cut_points:
+        intervals.append((float(min_val), float(cut_points[0])))
+        for i in range(len(cut_points)-1):
+            intervals.append((float(cut_points[i]), float(cut_points[i+1])))
+        intervals.append((float(cut_points[-1]), float(max_val)))
+    else:
+        intervals.append((float(min_val), float(max_val)))
+        
+    return intervals
+
+def kmeans_clustering(values, n_clusters, random_state=42):
+    X = np.array(values).reshape(-1, 1)
+    kmeans = KMeans(n_clusters=n_clusters, random_state=random_state)
+    kmeans.fit(X)
+    
+    centers = np.sort(kmeans.cluster_centers_.flatten())
+    min_val = float(min(values))
+    max_val = float(max(values))
+    
+    intervals = []
+    if len(centers) > 1:
+        intervals.append((round(min_val, 2), round(float(centers[0]), 2)))
+        for i in range(len(centers)-1):
+            intervals.append((round(float(centers[i]), 2), round(float(centers[i+1]), 2)))
+        intervals.append((round(float(centers[-1]), 2), round(max_val, 2)))
+    else:
+        intervals.append((round(min_val, 2), round(max_val, 2)))
+    
+    return intervals
