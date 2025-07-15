@@ -89,11 +89,21 @@
             method="post" 
             action="/mine" 
             x-data="{
+                defaultParameters: {
+                    'itemset': { min_sup: 0.2 },
+                    'associationrule': { min_sup: 0.01, min_conf: 0.5, min_lift: 1.0 },
+                    'classificationrule': { min_sup: 0.01, min_conf: 0.5, min_lift: 1.0, target: 'OnTime-EVENT-Delivery' }
+                },
                 data: {
                     objective: {
                         name: 'itemset',
                         parameters: { min_sup: 0.2 }
                     }
+                },
+                init() {
+                    this.$watch('data.objective.name', (newObjective) => {
+                        this.data.objective.parameters = JSON.parse(JSON.stringify(this.defaultParameters[newObjective]));
+                    });
                 },
                 submitForm() {
                     fetch(this.$el.action, {
@@ -120,28 +130,45 @@
                     </div>
                     <div class="card-body">
                         <select class="form-select mb-3" x-model="data.objective.name">
-                        <option value="itemset">Itemset</option>
-                        <option value="associationrule">AssociationRule</option>
+                            <option value="itemset">Frequent Itemsets</option>
+                            <option value="associationrule">Association Rules</option>
+                            <option value="classificationrule">Classification Rules</option>
                         </select>
                         <div class="objective-parameters">
                             <template x-if="data.objective.name === 'itemset'">
                                 <div class="ps-4">
-                                <label class="form-label">Min. Support:</label>
-                                <input type="number" class="form-control mb-2" step="0.01" min="0" max="1"
-                                        x-model="data.objective.parameters.min_sup">
+                                    <label class="form-label">Min. Support:</label>
+                                    <input type="number" class="form-control mb-2" step="0.01" min="0" max="1"
+                                            x-model="data.objective.parameters.min_sup">
                                 </div>
                             </template>
                             <template x-if="data.objective.name === 'associationrule'">
                                 <div class="ps-4">
-                                <label class="form-label">Min. Support:</label>
-                                <input type="number" class="form-control mb-2" step="0.01" min="0" max="1"
-                                        x-model="data.objective.parameters.min_sup">
-                                <label class="form-label mt-2">Min. Confidence:</label>
-                                <input type="number" class="form-control mb-2" step="0.01" min="0" max="1"
-                                        x-model="data.objective.parameters.min_conf">
-                                <label class="form-label mt-2">Min. Lift:</label>
-                                <input type="number" class="form-control" step="0.01" min="0"
-                                        x-model="data.objective.parameters.min_lift">
+                                    <label class="form-label">Min. Support:</label>
+                                    <input type="number" class="form-control mb-2" step="0.01" min="0" max="1"
+                                            x-model="data.objective.parameters.min_sup">
+                                    <label class="form-label mt-2">Min. Confidence:</label>
+                                    <input type="number" class="form-control mb-2" step="0.01" min="0" max="1"
+                                            x-model="data.objective.parameters.min_conf">
+                                    <label class="form-label mt-2">Min. Lift:</label>
+                                    <input type="number" class="form-control" step="0.01" min="0"
+                                            x-model="data.objective.parameters.min_lift">
+                                </div>
+                            </template>
+                            <template x-if="data.objective.name === 'classificationrule'">
+                                <div class="ps-4">
+                                    <label class="form-label">Min. Support:</label>
+                                    <input type="number" class="form-control mb-2" step="0.01" min="0" max="1"
+                                            x-model="data.objective.parameters.min_sup">
+                                    <label class="form-label mt-2">Min. Confidence:</label>
+                                    <input type="number" class="form-control mb-2" step="0.01" min="0" max="1"
+                                            x-model="data.objective.parameters.min_conf">
+                                    <label class="form-label mt-2">Min. Lift:</label>
+                                    <input type="number" class="form-control" step="0.01" min="0"
+                                            x-model="data.objective.parameters.min_lift">
+                                    <label class="form-label mt-2">Target Attribute:</label>
+                                    <input type="text" class="form-control"
+                                            x-model="data.objective.parameters.target">
                                 </div>
                             </template>
                         </div>

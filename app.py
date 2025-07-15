@@ -2,6 +2,7 @@ import os
 from flask import Flask, flash, request, redirect, render_template, session, url_for, jsonify
 from werkzeug.utils import secure_filename
 import helper
+import mining
 import warnings
 from pandas.errors import SettingWithCopyWarning
 import json
@@ -36,11 +37,10 @@ def upload_file():
     if request.method == 'POST':
         if 'file' in request.files:
             file = request.files['file']
-            if file.filename == '':
-                flash('Keine Datei ausgewählt')
-                return redirect(request.url)
+            if not file:
+                raise Exception("No OCEL selected")
             
-            if file and helper.allowed_file(file.filename, str(ALLOWED_EXTENSIONS)):
+            if file and file.filename and helper.allowed_file(file.filename, str(ALLOWED_EXTENSIONS)):
                 filename = secure_filename(file.filename)
                 file_path = os.path.join(upload_folder, filename)
                 file.save(file_path)
@@ -85,6 +85,7 @@ def process_attributes():
     data = request.get_json()
 
     selected = [attribute for attribute in data['attributes'] if attribute['selected']]
+    session["selected"] = selected
     numeric = [attribute for attribute in selected if attribute['numeric']]
     not_numeric = [attribute for attribute in selected if not attribute['numeric']]
 
@@ -111,7 +112,7 @@ def process_attributes():
 def show_items():
     with open("items.json", "r") as f:
         items = json.load(f)
-    return render_template('items.html', items=items)
+    return render_template('items.html', items=items, attributes=session.get("selected"))
 
 @app.route('/mine', methods=['POST'])
 def mine():
@@ -130,12 +131,67 @@ def mine():
     objective = data["objective"]["name"]
     parameters = data["objective"]["parameters"]
 
-    return jsonify({"status": "success", "redirect_url": url_for('show_objective')})
+    match objective:
+        case "itemset":
+            transactions = mining.tranform_ocel(ocel, items)
+            frequent_itemsets = mining.generate_frequent_itemsets(transactions, float(parameters["min_sup"]))
+            frequent_itemsets = mining.frequent_itemset_to_json(frequent_itemsets)
+            with open("itemset.json", "w") as f:
+                json.dump(frequent_itemsets, f)
+            return jsonify({
+                "status": "success",
+                "redirect_url": url_for('show_frequent_itemsets')
+            })
+        
+        case "associationrule":
+            transactions = mining.tranform_ocel(ocel, items)
+            frequent_itemsets = mining.generate_frequent_itemsets(transactions, float(parameters["min_sup"]))
+            association_rules = mining.generate_association_rules(frequent_itemsets, float(parameters["min_lift"]))
+            association_rules = mining.association_rule_to_json(association_rules)
+            with open("association_rules.json", "w") as f:
+                json.dump(association_rules, f)
+            return jsonify({
+                "status": "success",
+                "redirect_url": url_for('show_association_rules')
+            })
+        
+        case "classificationrule":
+            transactions = mining.tranform_ocel(ocel, items)
+            frequent_itemsets = mining.generate_frequent_itemsets(transactions, float(parameters["min_sup"]))
+            association_rules = mining.generate_association_rules(frequent_itemsets, float(parameters["min_lift"]))
+            association_rules = mining.association_rule_to_json(association_rules)
+            rules = []
+            attribute, type, qualifier = parameters["target"].split("-")
+            for rule in association_rules:
+                if len(rule["consequents"]) == 1 and rule["consequents"][0]["attribute"] == attribute:
+                    rules.append(rule)
+            with open("classification_rules.json", "w") as f:
+                json.dump(rules, f)
+            return jsonify({
+                "status": "success",
+                "redirect_url": url_for('show_classification_rules')
+            })
+        
+    return jsonify({"status": "failed",})
+            
 
-@app.route('/result')
-def show_objective():
-    return render_template('frequent_itemsets.html')
+@app.route('/itemsets')
+def show_frequent_itemsets():
+    with open("itemset.json", "r") as f:
+        itemsets = json.load(f)
+    return render_template('frequent_itemsets.html', frequent_itemsets=itemsets)
 
+@app.route('/association_rules')
+def show_association_rules():
+    with open("association_rules.json", "r") as f:
+        rules = json.load(f)
+    return render_template('association_rules.html', rules=rules)
+
+@app.route('/classification_rules')
+def show_classification_rules():
+    with open("classification_rules.json", "r") as f:
+        rules = json.load(f)
+    return render_template('classification_rules.html', rules=rules)
 
 
 
