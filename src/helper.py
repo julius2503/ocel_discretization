@@ -1,38 +1,41 @@
-import pandas as pd
+import copy
+from typing import List
+
 import numpy as np
+import pandas as pd
 import pm4py
 from pm4py import OCEL
-from typing import List
-import copy
-import chimerge
 from scipy.stats import chi2
 from sklearn.cluster import KMeans
+
+from src import chimerge
+
 
 def allowed_file(filename: str, allowed_extensions: str) -> bool:
     return '.' in filename and filename.split(".")[1] in allowed_extensions
 
 def load_ocel(file_path: str) -> OCEL:
     file_type = file_path.split(".")[1]
-    
+
     match file_type:
         case "json":
             return pm4py.read_ocel2_json(file_path=file_path)
         case "sqlite":
             return pm4py.read_ocel2_sqlite(file_path=file_path)
-        case _: 
+        case _:
             return pm4py.read_ocel2(file_path=file_path)
-        
+
 def get_attribute_values(ocel: OCEL, attribute, qualifier, type):
     match type:
         case "EVENT":
             values = ocel.events[ocel.events["ocel:activity"] == qualifier][attribute].unique().tolist()
             return [{"value": str(v)} for v in values]
-        
+
         case "OBJECT":
             values = ocel.objects[ocel.objects["ocel:type"] == qualifier][attribute].unique().tolist()
             return [{"value": str(v)} for v in values]
 
-        
+
 def get_attributes(ocel: OCEL) -> List[List[str]]:
     events = ocel.events
     objects = ocel.objects
@@ -41,14 +44,14 @@ def get_attributes(ocel: OCEL) -> List[List[str]]:
     object_cols = {'ocel:oid', 'ocel:timestamp', 'ocel:type'}
 
     attributes = [col for col in events.columns if col not in event_cols]
-    
+
     result = []
-    
+
     for attr in attributes:
         attribute = attr
         qualifier = events[events[attr].notna()]['ocel:activity'].unique()
         type = "EVENT"
-        
+
         for activity in qualifier:
             result.append(
                 {
@@ -60,12 +63,12 @@ def get_attributes(ocel: OCEL) -> List[List[str]]:
             )
 
     attributes = [col for col in objects.columns if col not in object_cols]
-    
+
     for attr in attributes:
         attribute = attr
         qualifier = objects[objects[attr].notna()]['ocel:type'].unique()
         type = "OBJECT"
-        
+
         for activity in qualifier:
             result.append(
                 {
@@ -86,14 +89,14 @@ def get_attribute_list(ocel: OCEL):
     object_cols = {'ocel:oid', 'ocel:timestamp', 'ocel:type'}
 
     attributes = [col for col in events.columns if col not in event_cols]
-    
+
     result = []
-    
+
     for attr in attributes:
         attribute = attr
         qualifier = events[events[attr].notna()]['ocel:activity'].unique()
         type = "EVENT"
-        
+
         for activity in qualifier:
             result.append(
                 {
@@ -104,12 +107,12 @@ def get_attribute_list(ocel: OCEL):
             )
 
     attributes = [col for col in objects.columns if col not in object_cols]
-    
+
     for attr in attributes:
         attribute = attr
         qualifier = objects[objects[attr].notna()]['ocel:type'].unique()
         type = "OBJECT"
-        
+
         for activity in qualifier:
             result.append(
                 {
@@ -184,7 +187,7 @@ def get_related_attributes(ocel:OCEL, attribute:str, type: str, qualifier: str) 
 def o2o_mapping(ocel: OCEL) -> pd.DataFrame:
     object_types = ocel.objects[[ocel.object_id_column, ocel.object_type_column]]
     oid_to_otype = dict(zip(
-        object_types[ocel.object_id_column], 
+        object_types[ocel.object_id_column],
         object_types[ocel.object_type_column]
     ))
     o2o_relations = ocel.o2o.copy()
@@ -208,7 +211,7 @@ def not_numeric(ocel:OCEL, data):
     items = []
     for value in values:
         items.append([{
-            "attribute": attribute, 
+            "attribute": attribute,
             "type": type,
             "qualifier": qualifier,
             "value": str(value)
@@ -233,12 +236,12 @@ def split_numerical_attribute(ocel: OCEL, type, splits):
                         fitting_oids = objects[(objects["ocel:type"] == split["qualifier"]) & (objects[split["attribute"]].astype(str) == split["selected_value"])]["ocel:oid"].tolist()
                         fitting_eids = relations[relations["ocel:oid"].isin(fitting_oids)]["ocel:eid"].unique().tolist()
                         events = events[events["ocel:eid"].isin(fitting_eids)]
-                    
+
                     case _:
                         raise Exception("Weder EVENT noch OBJECTS")
 
             return events
-        
+
         case "OBJECT":
             objects = ocel.objects
 
@@ -246,10 +249,10 @@ def split_numerical_attribute(ocel: OCEL, type, splits):
                 objects = objects[(objects["ocel:type"] == split["qualifier"]) & (objects[split["attribute"]].astype(str) == split["selected_value"])]
 
             return objects
-        
+
         case _:
             raise Exception("Weder EVENT noch OBJECTS")
-        
+
 def handle_aggregate_attributes(ocel, related_attribute, algorithm, parameters):
     aggr_attribute = related_attribute["attribute"]
     aggr_qualifier = related_attribute["qualifier"]
@@ -258,7 +261,7 @@ def handle_aggregate_attributes(ocel, related_attribute, algorithm, parameters):
     aggr_relations = ocel.relations[ocel.relations["ocel:type"] == aggr_qualifier]
     merged = aggr_relations.merge(ocel.objects[["ocel:oid", aggr_attribute]], on="ocel:oid",how="left")
     avg = merged.groupby("ocel:eid", as_index=False).agg(Aggr=(aggr_attribute, aggr_function)).round({"Aggr": 2})
-                        
+
     aggr_ocel = copy.deepcopy(ocel)
     aggr_ocel.events = aggr_ocel.events.merge(avg, on="ocel:eid", how="left")
 
@@ -290,8 +293,8 @@ def run_itemize(ocel:OCEL, data, algorithm):
 
             intervals = run_discretization(ocel, values, objects[objects["ocel:type"] == qualifier] ,algorithm_name, algorithm_parameters)
 
-    items = [[{ 
-        "attribute": attribute, 
+    items = [[{
+        "attribute": attribute,
         "type": type,
         "qualifier": qualifier,
         "interval": {
@@ -312,13 +315,13 @@ def run_itemize(ocel:OCEL, data, algorithm):
                         for value in values:
                             for item in items:
                                 new_items.append(item + [{
-                                    "attribute": related_attribute["attribute"], 
+                                    "attribute": related_attribute["attribute"],
                                     "type": "EVENT",
                                     "qualifier": qualifier,
                                     "value": str(value)
                                     }])
-                        items = new_items                   
-                    
+                        items = new_items
+
                     case "OBJECT":
                         values = objects[objects["ocel:type"] == related_attribute["qualifier"]][related_attribute["attribute"]].unique().tolist()
                         if related_attribute["aggregate"]:
@@ -327,21 +330,21 @@ def run_itemize(ocel:OCEL, data, algorithm):
                         for value in values:
                             for item in items:
                                 new_items.append(item + [{
-                                    "attribute": related_attribute["attribute"], 
+                                    "attribute": related_attribute["attribute"],
                                     "type": "OBJECT",
                                     "qualifier": qualifier,
                                     "aggregate": related_attribute["aggregate"],
                                     "value": str(value)
                                     }])
-                        items = new_items 
-            
+                        items = new_items
+
             case "OBJECT":
                 values = objects[objects["ocel:type"] == related_attribute["qualifier"]][related_attribute["attribute"]].unique()
                 new_items = []
                 for value in values:
                     for item in items:
                         new_items.append(item + [{
-                            "attribute": related_attribute["attribute"], 
+                            "attribute": related_attribute["attribute"],
                             "type": "OBJECT",
                             "qualifier": qualifier,
                             "value": str(value)
@@ -370,17 +373,17 @@ def equal_frequency_binning(values, bins):
     partitions = np.array_split(sorted(values), int(bins))
     intervals = []
     prev_end = None
-    
+
     for part in partitions:
         if len(part) == 0:
             continue
-            
+
         current_start = part[0].item()
         current_end = part[-1].item()
-        
+
         if prev_end is not None:
             current_start = prev_end
-            
+
         intervals.append((current_start, current_end))
         prev_end = current_end
 
@@ -392,13 +395,13 @@ def equal_width_binning(values, n_bins):
     max_val = float(values.max())
     bin_width = (max_val - min_val) / n_bins
     bins = [min_val + i * bin_width for i in range(n_bins)]
-    
+
     intervals = []
     for i in range(n_bins):
         start = bins[i]
         end = bins[i+1] if i < n_bins-1 else max_val
         intervals.append((int(start), int(end)))
-    
+
     return intervals
 
 
@@ -420,7 +423,7 @@ def chi_merge_binning(values, events, labels, n_intervals=6, alpha=0.1, min_gap=
             break
         merged = chimerge.merge_intervals(intervals[min_idx], intervals[min_idx+1])
         intervals = intervals[:min_idx] + [merged] + intervals[min_idx+2:]
-    
+
     while len(intervals) > n_intervals:
         min_chi2, min_idx = float('inf'), -1
         for i in range(len(intervals) - 1):
@@ -429,7 +432,7 @@ def chi_merge_binning(values, events, labels, n_intervals=6, alpha=0.1, min_gap=
                 min_chi2, min_idx = chi2_val, i
         merged = chimerge.merge_intervals(intervals[min_idx], intervals[min_idx+1])
         intervals = intervals[:min_idx] + [merged] + intervals[min_idx+2:]
-    
+
     cut_points = sorted(set(interval['end'] for interval in intervals[:-1]))
     cut_points = [float(cp) for cp in cut_points]
     min_val, max_val = min(values), max(values)
@@ -441,18 +444,18 @@ def chi_merge_binning(values, events, labels, n_intervals=6, alpha=0.1, min_gap=
         intervals.append((float(cut_points[-1]), float(max_val)))
     else:
         intervals.append((float(min_val), float(max_val)))
-        
+
     return intervals
 
 def kmeans_clustering(values, n_clusters, random_state=42):
     X = np.array(values).reshape(-1, 1)
     kmeans = KMeans(n_clusters=n_clusters, random_state=random_state)
     kmeans.fit(X)
-    
+
     centers = np.sort(kmeans.cluster_centers_.flatten())
     min_val = float(min(values))
     max_val = float(max(values))
-    
+
     intervals = []
     if len(centers) > 1:
         intervals.append((round(min_val, 2), round(float(centers[0]), 2)))
@@ -461,5 +464,5 @@ def kmeans_clustering(values, n_clusters, random_state=42):
         intervals.append((round(float(centers[-1]), 2), round(max_val, 2)))
     else:
         intervals.append((round(min_val, 2), round(max_val, 2)))
-    
+
     return intervals

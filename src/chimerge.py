@@ -4,7 +4,7 @@ def initialize_intervals(values, labels):
     sorted_indices = np.argsort(values)
     sorted_values = np.array(values)[sorted_indices]
     sorted_labels = np.array(labels)[sorted_indices]
-    
+
     intervals = []
     for v, lbl in zip(sorted_values, sorted_labels):
         # Konvertiere NumPy-Array in Tupel (wenn Array) oder String
@@ -12,7 +12,7 @@ def initialize_intervals(values, labels):
             key = tuple(lbl)  # Konvertiere Array in hashbares Tupel
         else:
             key = str(lbl)    # Konvertiere Skalar in String
-        
+
         intervals.append({
             'start': v,
             'end': v,
