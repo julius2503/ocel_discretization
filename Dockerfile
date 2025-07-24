@@ -9,17 +9,13 @@ RUN python -m pip install --upgrade pip
 
 # 3. Abhängigkeiten kopieren und installieren
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt gunicorn
 
 # 4. Anwendungscode kopieren
 COPY . .
-
-# 5. Umgebungsvariable für Flask
-ENV FLASK_APP=app.py
-ENV FLASK_RUN_HOST=0.0.0.0
 
 # 6. Port freigeben
 EXPOSE 5000
 
 # 7. Startbefehl
-CMD ["flask", "run"]
+CMD ["gunicorn", "--workers", "3", "--bind", "0.0.0.0:5000", "app:app"]
