@@ -1,4 +1,4 @@
-name: Build and Publish Docker Image
+name: Build and Publish Multi-Arch Docker Image
 
 on:
   push:
@@ -9,8 +9,8 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
-      packages: write
       contents: read
+      packages: write
 
     steps:
       - name: Checkout repository
@@ -23,17 +23,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.DOCKERREGISTRY }}
 
-      - name: Build Docker image
-        run: |
-          IMAGE_NAME=ghcr.io/${{ github.repository_owner }}/ocel_discretizer
-          docker build -t $IMAGE_NAME:${{ github.sha }} .
-          docker tag $IMAGE_NAME:${{ github.sha }} $IMAGE_NAME:latest
+      - name: Set up QEMU for multi-arch
+        uses: docker/setup-qemu-action@v3
 
-      - name: Push to GitHub Container Registry
-        run: |
-          IMAGE_NAME=ghcr.io/${{ github.repository_owner }}/ocel_discretizer
-          docker push $IMAGE_NAME:${{ github.sha }}
-          docker push $IMAGE_NAME:latest
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Output image URL
-        run: echo "Image available at ghcr.io/${{ github.repository_owner }}/ocel_discretizer:latest"
+      - name: Build and push multi-arch image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/ocel_discretizer:latest
+            ghcr.io/${{ github.repository_owner }}/ocel_discretizer:${{ github.sha }}
