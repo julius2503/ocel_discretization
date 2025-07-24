@@ -4,6 +4,9 @@ FROM python:3.11-slim
 # 2. Arbeitsverzeichnis
 WORKDIR /app
 
+# pip aktualisieren, bevor requirements installiert werden
+RUN python -m pip install --upgrade pip
+
 # 3. Abhängigkeiten kopieren und installieren
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
