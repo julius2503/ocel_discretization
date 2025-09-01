@@ -1,10 +1,10 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="de">
     <head>
-        <meta charset="UTF-8">
+        <meta charset="UTF-8" />
         <title>Diskretisierte Items</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
         <script src="https://unpkg.com/htmx.org@2.0.4" integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+" crossorigin="anonymous"></script>
         <script src="https://unpkg.com/htmx.org/dist/ext/json-enc.js"></script>
         <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -12,18 +12,16 @@
             .attribute-card {
                 margin-bottom: 2rem;
                 border-radius: 12px;
-                box-shadow: 0 4px 16px 0 rgba(0,0,0,0.10), 0 1.5px 6px 0 rgba(0,0,0,0.08);
+                box-shadow:
+                    0 4px 16px 0 rgba(0, 0, 0, 0.1),
+                    0 1.5px 6px 0 rgba(0, 0, 0, 0.08);
                 padding: 1.5rem 1.5rem 1rem 1.5rem;
                 background: #fff;
             }
-            .interval-table th, .interval-table td {
+            .interval-table th,
+            .interval-table td {
                 text-align: center;
                 vertical-align: middle;
-            }
-            .interval-range {
-                font-family: 'Fira Mono', 'Consolas', monospace;
-                font-size: 1.1em;
-                letter-spacing: 0.02em;
             }
             .attribute-title {
                 font-size: 1.2rem;
@@ -41,6 +39,15 @@
                 gap: 0.5rem;
                 align-items: center;
                 justify-content: center;
+            }
+            .intervall-pill {
+                background-color: #13678A;
+                color: #d1ecf1;
+                padding: 0.25em 0.8em;
+                border-radius: 12px;
+                font-size: 0.9em;
+                display: inline-block;
+                margin-top: 0.5rem;
             }
             .value-pill {
                 background-color: #d1ecf1;
@@ -70,7 +77,7 @@
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
                 transition: background-color 0.2s;
             }
             #scrollToTopBtn:hover {
@@ -80,19 +87,17 @@
     </head>
     <body>
         <div class="container my-5">
-            <a href="{{ url_for('upload_file') }}" class="btn btn-secondary">
-                Neue Analyse starten
-            </a>
+            <a href="{{ url_for('upload_file') }}" class="btn btn-secondary">Neue Analyse starten</a>
         </div>
 
-        <form 
-            method="post" 
-            action="/mine" 
+        <form
+            method="post"
+            action="/mine"
             x-data="{
                 defaultParameters: {
-                    'itemset': { min_sup: 0.2 },
-                    'associationrule': { min_sup: 0.01, min_conf: 0.5, min_lift: 1.0 },
-                    'classificationrule': { min_sup: 0.01, min_conf: 0.5, min_lift: 1.0, target: 'OnTime-EVENT-Delivery' }
+                    'itemset': { min_sup: 0.1 },
+                    'associationrule': { min_sup: 0.02, min_conf: 0.5, min_lift: 1.0 },
+                    'classificationrule': { min_sup: 0.02, min_conf: 0.5, min_lift: 1.0, target: 'OnTime-EVENT-Delivery' }
                 },
                 data: {
                     objective: {
@@ -100,6 +105,15 @@
                         parameters: { min_sup: 0.2 }
                     }
                 },
+                attributes: [
+                    {% for attr in attributes if attr.selected%}
+                    {
+                        attribute: '{{ attr.attribute }}',
+                        type: '{{ attr.type }}',
+                        qualifier: '{{ attr.qualifier }}',
+                    }{% if not loop.last %},{% endif %}
+                    {% endfor %}
+                ],
                 init() {
                     this.$watch('data.objective.name', (newObjective) => {
                         this.data.objective.parameters = JSON.parse(JSON.stringify(this.defaultParameters[newObjective]));
@@ -126,7 +140,10 @@
             <div class="container my-5">
                 <div class="card mb-4 shadow-sm border-0">
                     <div class="card-header bg-secondary text-white">
-                        <h5 class="mb-0"><i class="bi bi-bullseye"></i> Objective</h5>
+                        <h5 class="mb-0">
+                            <i class="bi bi-bullseye"></i>
+                            Objective
+                        </h5>
                     </div>
                     <div class="card-body">
                         <select class="form-select mb-3" x-model="data.objective.name">
@@ -138,145 +155,118 @@
                             <template x-if="data.objective.name === 'itemset'">
                                 <div class="ps-4">
                                     <label class="form-label">Min. Support:</label>
-                                    <input type="number" class="form-control mb-2" step="0.01" min="0" max="1"
-                                            x-model="data.objective.parameters.min_sup">
+                                    <input type="number" class="form-control mb-2" step="0.001" min="0" max="1" x-model="data.objective.parameters.min_sup"/>
                                 </div>
                             </template>
                             <template x-if="data.objective.name === 'associationrule'">
                                 <div class="ps-4">
                                     <label class="form-label">Min. Support:</label>
-                                    <input type="number" class="form-control mb-2" step="0.01" min="0" max="1"
-                                            x-model="data.objective.parameters.min_sup">
+                                    <input type="number" class="form-control mb-2" step="0.01" min="0" max="1" x-model="data.objective.parameters.min_sup"/>
                                     <label class="form-label mt-2">Min. Confidence:</label>
-                                    <input type="number" class="form-control mb-2" step="0.01" min="0" max="1"
-                                            x-model="data.objective.parameters.min_conf">
+                                    <input type="number" class="form-control mb-2" step="0.01" min="0" max="1" x-model="data.objective.parameters.min_conf"/>
                                     <label class="form-label mt-2">Min. Lift:</label>
-                                    <input type="number" class="form-control" step="0.01" min="0"
-                                            x-model="data.objective.parameters.min_lift">
+                                    <input type="number" class="form-control" step="0.01" min="0" x-model="data.objective.parameters.min_lift"/>
                                 </div>
                             </template>
                             <template x-if="data.objective.name === 'classificationrule'">
                                 <div class="ps-4">
                                     <label class="form-label">Min. Support:</label>
-                                    <input type="number" class="form-control mb-2" step="0.01" min="0" max="1"
-                                            x-model="data.objective.parameters.min_sup">
+                                    <input type="number" class="form-control mb-2" step="0.01" min="0" max="1" x-model="data.objective.parameters.min_sup"/>
                                     <label class="form-label mt-2">Min. Confidence:</label>
-                                    <input type="number" class="form-control mb-2" step="0.01" min="0" max="1"
-                                            x-model="data.objective.parameters.min_conf">
+                                    <input type="number" class="form-control mb-2" step="0.01" min="0" max="1" x-model="data.objective.parameters.min_conf"/>
                                     <label class="form-label mt-2">Min. Lift:</label>
-                                    <input type="number" class="form-control" step="0.01" min="0"
-                                            x-model="data.objective.parameters.min_lift">
+                                    <input type="number" class="form-control" step="0.01" min="0" x-model="data.objective.parameters.min_lift"/>
                                     <label class="form-label mt-2">Target Attribute:</label>
-                                    <input type="text" class="form-control"
-                                            x-model="data.objective.parameters.target">
+                                    <select class="form-select" multiple x-model="data.objective.parameters.target" x-multiselect :size="attributes.length" style="height: auto;">
+                                        <template x-for="attr in attributes">
+                                            <option :value="JSON.stringify({ attribute: attr.attribute, type: attr.type, qualifier: attr.qualifier })" x-text="attr.attribute + '-' + attr.type + '-' + attr.qualifier"></option>
+                                        </template>
+                                    </select>
                                 </div>
                             </template>
                         </div>
                     </div>
                 </div>
-                
-                <div  class="text-center">
-                    <button type="submit" class="btn btn-primary">Mining starten</button>
+
+                <div class="text-center">
+                    <button type="submit" class="btn btn-primary">
+                        Mining starten
+                    </button>
                 </div>
             </div>
         </form>
 
         <div class="container my-5">
-
             <h1 class="mb-4 text-center">Diskretisierte Items</h1>
-
-            {% for item_group in items %}
-                <div class="attribute-card">
-                    <div class="attribute-title">
-                        Item {{ loop.index }}
-                    </div>
-                    <div class="table-responsive">
-                        <table class="table interval-table table-bordered align-middle">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>#</th>
-                                    <th>Attribut</th>
-                                    <th>Typ</th>
-                                    <th>Qualifier</th>
-                                    <th>Value</th>
-                                    <th>Aggregate</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for elem in item_group %}
-                                    <tr>
-                                        <td>
-                                            <span class="badge badge-interval">{{ loop.index }}</span>
-                                        </td>
-                                        <td>
-                                            {# Falls Attribut ein verschachteltes Dict ist, zeige dessen Namen #}
-                                            {% if elem.attribute is mapping %}
-                                                {{ elem.attribute.attribute }}
-                                            {% else %}
-                                                {{ elem.attribute }}
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            {% if elem.attribute is mapping %}
-                                                {{ elem.attribute.type }}
-                                            {% else %}
-                                                {{ elem.type }}
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            {% if elem.attribute is mapping %}
-                                                {{ elem.attribute.qualifier }}
-                                            {% else %}
-                                                {{ elem.qualifier }}
-                                            {% endif %}
-                                        </td>
-                                        <td class="interval-value-container">
-                                            {% if elem.interval is defined %}
-                                                <div class="interval-range">
-                                                    [{{ elem.interval.start }}, {{ elem.interval.end }}]
-                                                </div>
-                                            {% endif %}
-                                            {% if elem.value is defined %}
-                                                <div class="value-pill">
-                                                    {{ elem.value }}
-                                                </div>
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            {% if elem.aggregate is defined%}
-                                                {{ elem.aggregate }}
-                                            {% else %}
-                                                –
-                                            {% endif %}
-                                        </td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
+            {% for elem in items %}
+            <div class="attribute-card">
+                <div class="attribute-title">Item {{ loop.index }}</div>
+                <div class="table-responsive">
+                    <table class="table interval-table table-bordered align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>#</th>
+                                <th>Attribut</th>
+                                <th>Typ</th>
+                                <th>Qualifier</th>
+                                <th>Value</th>
+                                <th>Aggregate</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><span class="badge badge-interval">1</span></td>
+                                <td>{{ elem.attribute }}</td>
+                                <td>{{ elem.type }}</td>
+                                <td>{{ elem.qualifier }}</td>
+                                <td class="interval-value-container">
+                                    {% if elem.interval is defined %}
+                                    <div class="intervall-pill">
+                                        [{{ elem.interval.start }}, {{ elem.interval.end }}]
+                                    </div>
+                                    {% endif %}
+                                    {% if elem.value is defined %}
+                                    <div class="value-pill">
+                                        {{ elem.value }}
+                                    </div>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if elem.aggregate %}
+                                        {{ elem.aggregate }}
+                                    {% else %}
+                                        –
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
+            </div>
             {% endfor %}
         </div>
 
         <button id="scrollToTopBtn" title="Nach oben scrollen">↑</button>
 
         <script>
-            window.onscroll = function() {
-                const btn = document.getElementById('scrollToTopBtn');
-                if (document.body.scrollTop > 20 || document.documentElement.scrollTop > 20) {
+            window.onscroll = function () {
+                const btn = document.getElementById("scrollToTopBtn");
+                if (
+                    document.body.scrollTop > 20 ||
+                    document.documentElement.scrollTop > 20
+                ) {
                     btn.style.display = "block";
                 } else {
                     btn.style.display = "none";
                 }
             };
 
-            document.getElementById('scrollToTopBtn').onclick = function() {
+            document.getElementById("scrollToTopBtn").onclick = function () {
                 window.scrollTo({
                     top: 0,
-                    behavior: 'smooth'
+                    behavior: "smooth",
                 });
             };
         </script>
-
     </body>
 </html>

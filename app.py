@@ -9,13 +9,21 @@ from flask import (
     redirect,
     render_template,
     request,
-    session,
     url_for,
 )
 from pandas.errors import SettingWithCopyWarning
 from werkzeug.utils import secure_filename
 
-from src import helper, mining
+from src.aggregation import handle_aggregate_attributes
+from src.mining import (
+    association_rule_to_json,
+    frequent_itemset_to_json,
+    generate_association_rules,
+    generate_frequent_itemsets,
+    run_itemize,
+    tranform_ocel,
+)
+from src.preprocessing import allowed_file, get_attributes, load_ocel, save_ocel
 
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=SettingWithCopyWarning)
@@ -25,12 +33,11 @@ ALLOWED_EXTENSIONS = {"json", "sqlite"}
 MAX_CONTENT_LENGTH = 16 * 1024 * 1024
 
 app = Flask(__name__)
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+app.config["UPLOAD_FOLDER"] = "uploads"
 app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
 app.secret_key = "key"
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
 
 @app.template_filter("file_extension")
 def file_extension(filename):
@@ -55,15 +62,15 @@ def upload_file():
             if (
                 file
                 and file.filename
-                and helper.allowed_file(file.filename, str(ALLOWED_EXTENSIONS))
+                and allowed_file(file.filename, str(ALLOWED_EXTENSIONS))
             ):
                 filename = secure_filename(file.filename)
                 file_path = os.path.join(upload_folder, filename)
                 file.save(file_path)
-                session["current_ocel"] = file_path
                 try:
-                    ocel = helper.load_ocel(file_path)
-                    attributes = helper.get_attributes(ocel)
+                    ocel = load_ocel("data/ocel.json")
+                    save_ocel(ocel, "data/ocel.json")
+                    attributes = get_attributes(ocel)
 
                     return render_template(
                         "select.html", filename=filename, attributes=attributes
@@ -76,10 +83,10 @@ def upload_file():
             filename = request.form["existing_file"]
             file_path = os.path.join(upload_folder, filename)
             if os.path.exists(file_path):
-                session["current_ocel"] = file_path
                 try:
-                    ocel = helper.load_ocel(file_path)
-                    attributes = helper.get_attributes(ocel)
+                    ocel = load_ocel(file_path)
+                    save_ocel(ocel, "data/ocel.json")
+                    attributes = get_attributes(ocel)
 
                     return render_template(
                         "select.html", filename=filename, attributes=attributes
@@ -98,29 +105,20 @@ def upload_file():
 @app.route("/process", methods=["POST"])
 def process_attributes():
     data = request.get_json()
+    with open("data/attributes.json", "w") as f:
+        json.dump(data["attributes"], f)
 
-    selected = [
-        attribute for attribute in data["attributes"] if attribute["selected"]
-    ]
-    session["selected"] = selected
-    numeric = [attribute for attribute in selected if attribute["numeric"]]
-    not_numeric = [
-        attribute for attribute in selected if not attribute["numeric"]
-    ]
-
-    file_path = session.get("current_ocel")
-    if not file_path:
-        flash("Fehler beim Laden des OCEL")
-        return redirect(request.url)
-    ocel = helper.load_ocel(file_path)
+    ocel = load_ocel("data/ocel.json")
 
     items = []
 
-    for attribute in numeric:
-        items.extend(helper.run_itemize(ocel, attribute, data["algorithm"]))
-
-    for attribute in not_numeric:
-        items.extend(helper.not_numeric(ocel, attribute))
+    for attr in data["attributes"]:
+        if attr["aggregation"] != "":
+            ocel, item = handle_aggregate_attributes(ocel, attr)
+            save_ocel(ocel, "data/ocel.json")
+            items.extend(item)
+        elif attr["selected"]:
+            items.extend(run_itemize(ocel, attr))
 
     with open("data/items.json", "w") as f:
         json.dump(items, f)
@@ -130,22 +128,20 @@ def process_attributes():
 
 @app.route("/items")
 def show_items():
+    with open("data/attributes.json", "r") as f:
+        attributes = json.load(f)
+
     with open("data/items.json", "r") as f:
         items = json.load(f)
     return render_template(
-        "items.html", items=items, attributes=session.get("selected")
+        "items.html", items=items, attributes=attributes
     )
 
 
 @app.route("/mine", methods=["POST"])
 def mine():
     data = request.get_json()
-
-    file_path = session.get("current_ocel")
-    if not file_path:
-        flash("Fehler beim Laden des OCEL")
-        return redirect(request.url)
-    ocel = helper.load_ocel(file_path)
+    ocel = load_ocel("data/ocel.json")
 
     with open("data/items.json", "r") as f:
         items = json.load(f)
@@ -155,11 +151,11 @@ def mine():
 
     match objective:
         case "itemset":
-            transactions = mining.tranform_ocel(ocel, items)
-            frequent_itemsets = mining.generate_frequent_itemsets(
+            transactions = tranform_ocel(ocel, items)
+            frequent_itemsets = generate_frequent_itemsets(
                 transactions, float(parameters["min_sup"])
             )
-            frequent_itemsets = mining.frequent_itemset_to_json(
+            frequent_itemsets = frequent_itemset_to_json(
                 frequent_itemsets
             )
             with open("data/itemset.json", "w") as f:
@@ -172,14 +168,14 @@ def mine():
             )
 
         case "associationrule":
-            transactions = mining.tranform_ocel(ocel, items)
-            frequent_itemsets = mining.generate_frequent_itemsets(
+            transactions = tranform_ocel(ocel, items)
+            frequent_itemsets = generate_frequent_itemsets(
                 transactions, float(parameters["min_sup"])
             )
-            association_rules = mining.generate_association_rules(
+            association_rules = generate_association_rules(
                 frequent_itemsets, float(parameters["min_lift"])
             )
-            association_rules = mining.association_rule_to_json(
+            association_rules = association_rule_to_json(
                 association_rules
             )
             with open("data/association_rules.json", "w") as f:
@@ -192,14 +188,14 @@ def mine():
             )
 
         case "classificationrule":
-            transactions = mining.tranform_ocel(ocel, items)
-            frequent_itemsets = mining.generate_frequent_itemsets(
+            transactions = tranform_ocel(ocel, items)
+            frequent_itemsets = generate_frequent_itemsets(
                 transactions, float(parameters["min_sup"])
             )
-            association_rules = mining.generate_association_rules(
+            association_rules = generate_association_rules(
                 frequent_itemsets, float(parameters["min_lift"])
             )
-            association_rules = mining.association_rule_to_json(
+            association_rules = association_rule_to_json(
                 association_rules
             )
             rules = []

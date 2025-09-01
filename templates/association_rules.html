@@ -1,22 +1,35 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="de">
     <head>
-        <meta charset="UTF-8">
+        <meta charset="UTF-8" />
         <title>Association Rules</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-        <script src="https://unpkg.com/htmx.org@2.0.4" integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+" crossorigin="anonymous"></script>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <link
+            href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+            rel="stylesheet"
+        />
+        <script
+            src="https://unpkg.com/htmx.org@2.0.4"
+            integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+"
+            crossorigin="anonymous"
+        ></script>
         <script src="https://unpkg.com/htmx.org/dist/ext/json-enc.js"></script>
-        <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+        <script
+            defer
+            src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
+        ></script>
         <style>
             .rule-card {
                 margin-bottom: 2rem;
                 border-radius: 12px;
-                box-shadow: 0 4px 16px 0 rgba(0,0,0,0.10), 0 1.5px 6px 0 rgba(0,0,0,0.08);
+                box-shadow:
+                    0 4px 16px 0 rgba(0, 0, 0, 0.1),
+                    0 1.5px 6px 0 rgba(0, 0, 0, 0.08);
                 padding: 1.5rem 1.5rem 1rem 1.5rem;
                 background: #fff;
             }
-            .rule-table th, .rule-table td {
+            .rule-table th,
+            .rule-table td {
                 text-align: center;
                 vertical-align: middle;
             }
@@ -163,7 +176,7 @@
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
                 transition: background-color 0.2s;
             }
             #scrollToTopBtn:hover {
@@ -173,7 +186,10 @@
     </head>
     <body>
         <div class="container my-5">
-            <a href="{{ url_for('show_items') }}" class="btn btn-secondary me-3">
+            <a
+                href="{{ url_for('show_items') }}"
+                class="btn btn-secondary me-3"
+            >
                 Zurück zu Items
             </a>
             <a href="{{ url_for('upload_file') }}" class="btn btn-secondary">
@@ -182,145 +198,205 @@
         </div>
 
         <div class="container my-5">
+            {% if rules %}
             <h1 class="mb-4 text-center">Association Rules</h1>
 
-            {% if rules %}
-                <div class="stats-card">
-                    <div class="row">
-                        <div class="col-md-3">
-                            <div class="stat-item">
-                                <div class="stat-number">{{ rules|length }}</div>
-                                <div class="stat-label">Association Rules</div>
-                            </div>
+            <div class="stats-card">
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="stat-item">
+                            <div class="stat-number">{{ rules|length }}</div>
+                            <div class="stat-label">Association Rules</div>
                         </div>
-                        <div class="col-md-3">
-                            <div class="stat-item">
-                                <div class="stat-number">{{ "%.3f"|format(rules|map(attribute='confidence')|max) }}</div>
-                                <div class="stat-label">Höchste Confidence</div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stat-item">
+                            <div class="stat-number">
+                                {{
+                                "%.3f"|format(rules|map(attribute='confidence')|max)
+                                }}
                             </div>
+                            <div class="stat-label">Höchste Confidence</div>
                         </div>
-                        <div class="col-md-3">
-                            <div class="stat-item">
-                                <div class="stat-number">{{ "%.3f"|format(rules|map(attribute='lift')|max) }}</div>
-                                <div class="stat-label">Höchster Lift</div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stat-item">
+                            <div class="stat-number">
+                                {{
+                                "%.3f"|format(rules|map(attribute='confidence')|sum
+                                / rules|length) }}
                             </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="stat-item">
-                                <div class="stat-number">{{ "%.3f"|format(rules|map(attribute='confidence')|sum / rules|length) }}</div>
-                                <div class="stat-label">Durchschnittliche Confidence</div>
+                            <div class="stat-label">
+                                Durchschnittliche Confidence
                             </div>
                         </div>
                     </div>
+                    <div class="col-md-3">
+                        <div class="stat-item">
+                            <div class="stat-number">
+                                {{
+                                "%.3f"|format(rules|map(attribute='lift')|max)
+                                }}
+                            </div>
+                            <div class="stat-label">Höchster Lift</div>
+                        </div>
+                    </div>
                 </div>
+            </div>
 
-                <div class="rule-card">
-                    <div class="table-responsive">
-                        <table class="table rule-table table-bordered align-middle">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Rang</th>
-                                    <th>Antecedents</th>
-                                    <th></th>
-                                    <th>Consequents</th>
-                                    <th>Support</th>
-                                    <th>Confidence</th>
-                                    <th>Lift</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for rule in rules %}
-                                    <tr>
-                                        <td>
-                                            <span class="badge badge-rank {% if loop.index <= 3 %}top-3{% endif %}">
-                                                {{ loop.index }}
-                                            </span>
-                                        </td>
-                                        <td class="rule-side">
-                                            <div class="d-flex flex-wrap gap-1 justify-content-center">
-                                                {% for item in rule.antecedents %}
-                                                    <span class="attribute-item {% if item.type == 'EVENT' %}event{% else %}object{% endif %}">
-                                                        <strong>{{ item.attribute }}</strong>: {{ item.value }}
-                                                        <br><small>{{ item.type }} ({{ item.qualifier }})</small>
-                                                    </span>
-                                                {% endfor %}
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <span class="rule-arrow">→</span>
-                                        </td>
-                                        <td>
-                                            <div class="d-flex flex-wrap gap-1 justify-content-center">
-                                                {% for item in rule.consequents %}
-                                                    <span class="attribute-item {% if item.type == 'EVENT' %}event{% else %}object{% endif %}">
-                                                        <strong>{{ item.attribute }}</strong>: {{ item.value }}
-                                                        <br><small>{{ item.type }} ({{ item.qualifier }})</small>
-                                                    </span>
-                                                {% endfor %}
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <span class="metric-badge metric-support">{{ "%.3f"|format(rule.support) }}</span>
-                                            <small class="text-muted">{{ "%.1f"|format(rule.support * 100) }}%</small>
-                                            <div class="confidence-bar">
-                                                <div class="support-fill" style="width: {{ (rule.support * 100)|round(1) }}%"></div>
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <span class="metric-badge metric-confidence">{{ "%.3f"|format(rule.confidence) }}</span>
-                                            <small class="text-muted">{{ "%.1f"|format(rule.confidence * 100) }}%</small>
-                                            <div class="confidence-bar">
-                                                <div class="confidence-fill" style="width: {{ (rule.confidence * 100)|round(1) }}%"></div>
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <span class="metric-badge metric-lift {% if rule.lift > 1.0 %}good{% endif %}">{{ "%.3f"|format(rule.lift) }}</span>
-                                        </td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
+            <div class="rule-card">
+                <div class="table-responsive">
+                    <table class="table rule-table table-bordered align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Rang</th>
+                                <th>Antecedents</th>
+                                <th></th>
+                                <th>Consequents</th>
+                                <th>Support</th>
+                                <th>Confidence</th>
+                                <th>Lift</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for rule in rules %}
+                            <tr>
+                                <td>
+                                    <span
+                                        class="badge badge-rank {% if loop.index <= 3 %}top-3{% endif %}"
+                                    >
+                                        {{ loop.index }}
+                                    </span>
+                                </td>
+                                <td class="rule-side">
+                                    <div
+                                        class="d-flex flex-wrap gap-1 justify-content-center"
+                                    >
+                                        {% for item in rule.antecedents %}
+                                        <span
+                                            class="attribute-item {% if item.type == 'EVENT' %}event{% else %}object{% endif %}"
+                                        >
+                                            <strong>{{ item.attribute }}</strong
+                                            >: {{ item.value }} <br /><small
+                                                >{{ item.type }} ({{
+                                                item.qualifier }})</small
+                                            >
+                                        </span>
+                                        {% endfor %}
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="rule-arrow">→</span>
+                                </td>
+                                <td>
+                                    <div
+                                        class="d-flex flex-wrap gap-1 justify-content-center"
+                                    >
+                                        {% for item in rule.consequents %}
+                                        <span
+                                            class="attribute-item {% if item.type == 'EVENT' %}event{% else %}object{% endif %}"
+                                        >
+                                            <strong>{{ item.attribute }}</strong
+                                            >: {{ item.value }} <br /><small
+                                                >{{ item.type }} ({{
+                                                item.qualifier }})</small
+                                            >
+                                        </span>
+                                        {% endfor %}
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="metric-badge metric-support"
+                                        >{{ "%.3f"|format(rule.support) }}</span
+                                    >
+                                    <small class="text-muted"
+                                        >{{ "%.1f"|format(rule.support * 100)
+                                        }}%</small
+                                    >
+                                    <div class="confidence-bar">
+                                        <div
+                                            class="support-fill"
+                                            style="width: {{ (rule.support * 100)|round(1) }}%"
+                                        ></div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="metric-badge metric-confidence"
+                                        >{{ "%.3f"|format(rule.confidence)
+                                        }}</span
+                                    >
+                                    <small class="text-muted"
+                                        >{{ "%.1f"|format(rule.confidence * 100)
+                                        }}%</small
+                                    >
+                                    <div class="confidence-bar">
+                                        <div
+                                            class="confidence-fill"
+                                            style="width: {{ (rule.confidence * 100)|round(1) }}%"
+                                        ></div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span
+                                        class="metric-badge metric-lift {% if rule.lift > 1.0 %}good{% endif %}"
+                                        >{{ "%.3f"|format(rule.lift) }}</span
+                                    >
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
+            </div>
 
             {% else %}
-                <div class="rule-card">
-                    <div class="no-data">
-                        <h3>Keine Association Rules gefunden</h3>
-                        <p>Es wurden keine Association Rules mit den aktuellen Parametern gefunden.</p>
-                        <a href="{{ url_for('show_items') }}" class="btn btn-primary">
-                            Zurück zu Items
-                        </a>
-                    </div>
+            <div class="rule-card">
+                <div class="no-data">
+                    <h3>Keine Association Rules gefunden</h3>
+                    <p>
+                        Es wurden keine Association Rules mit den aktuellen
+                        Parametern gefunden.
+                    </p>
+                    <a
+                        href="{{ url_for('show_items') }}"
+                        class="btn btn-primary"
+                    >
+                        Zurück zu Items
+                    </a>
                 </div>
+            </div>
             {% endif %}
         </div>
 
         <button id="scrollToTopBtn" title="Nach oben scrollen">↑</button>
 
         <script>
-            window.onscroll = function() {
-                const btn = document.getElementById('scrollToTopBtn');
-                if (document.body.scrollTop > 20 || document.documentElement.scrollTop > 20) {
+            window.onscroll = function () {
+                const btn = document.getElementById("scrollToTopBtn");
+                if (
+                    document.body.scrollTop > 20 ||
+                    document.documentElement.scrollTop > 20
+                ) {
                     btn.style.display = "block";
                 } else {
                     btn.style.display = "none";
                 }
             };
 
-            document.getElementById('scrollToTopBtn').onclick = function() {
+            document.getElementById("scrollToTopBtn").onclick = function () {
                 window.scrollTo({
                     top: 0,
-                    behavior: 'smooth'
+                    behavior: "smooth",
                 });
             };
 
             // Animate confidence bars on page load
-            document.addEventListener('DOMContentLoaded', function() {
-                const confidenceBars = document.querySelectorAll('.confidence-fill');
-                confidenceBars.forEach(bar => {
+            document.addEventListener("DOMContentLoaded", function () {
+                const confidenceBars =
+                    document.querySelectorAll(".confidence-fill");
+                confidenceBars.forEach((bar) => {
                     const width = bar.style.width;
-                    bar.style.width = '0%';
+                    bar.style.width = "0%";
                     setTimeout(() => {
                         bar.style.width = width;
                     }, 100);
