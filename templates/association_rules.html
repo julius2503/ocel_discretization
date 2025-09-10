@@ -186,61 +186,42 @@
     </head>
     <body>
         <div class="container my-5">
-            <a
-                href="{{ url_for('show_items') }}"
-                class="btn btn-secondary me-3"
-            >
-                Zurück zu Items
-            </a>
-            <a href="{{ url_for('upload_file') }}" class="btn btn-secondary">
-                Neue Analyse starten
-            </a>
+            <a href="{{ url_for('show_items') }}" class="btn btn-secondary me-3">Zurück zu Items</a>
+            <a href="{{ url_for('upload_file') }}" class="btn btn-secondary">Neue Analyse starten</a>
         </div>
 
         <div class="container my-5">
             {% if rules %}
             <h1 class="mb-4 text-center">Association Rules</h1>
 
-            <div class="stats-card">
-                <div class="row">
-                    <div class="col-md-3">
-                        <div class="stat-item">
-                            <div class="stat-number">{{ rules|length }}</div>
-                            <div class="stat-label">Association Rules</div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="stat-item">
-                            <div class="stat-number">
-                                {{
-                                "%.3f"|format(rules|map(attribute='confidence')|max)
-                                }}
-                            </div>
-                            <div class="stat-label">Höchste Confidence</div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="stat-item">
-                            <div class="stat-number">
-                                {{
-                                "%.3f"|format(rules|map(attribute='confidence')|sum
-                                / rules|length) }}
-                            </div>
-                            <div class="stat-label">
-                                Durchschnittliche Confidence
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="stat-item">
-                            <div class="stat-number">
-                                {{
-                                "%.3f"|format(rules|map(attribute='lift')|max)
-                                }}
-                            </div>
-                            <div class="stat-label">Höchster Lift</div>
-                        </div>
-                    </div>
+            <div class="stats-card d-flex justify-content-between flex-wrap">
+                <div class="stat-item text-center">
+                    <div class="stat-number">{{ rules|length }}</div>
+                    <div class="stat-label">Association Rules</div>
+                </div>
+                <div class="stat-item text-center">
+                    <div class="stat-number">{{ "%.3f"|format(rules|map(attribute='support')|sum / rules|length) }}</div>
+                    <div class="stat-label">Durchschnittlicher Support</div>
+                </div>
+                <div class="stat-item text-center">
+                    <div class="stat-number">{{ "%.3f"|format(rules|map(attribute='support')|max) }}</div>
+                    <div class="stat-label">Höchster Support</div>
+                </div>
+                <div class="stat-item text-center">
+                    <div class="stat-number">{{ "%.3f"|format(rules|map(attribute='confidence')|sum / rules|length) }}</div>
+                    <div class="stat-label">Durchschnittliche Confidence</div>
+                </div>
+                <div class="stat-item text-center">
+                    <div class="stat-number">{{ "%.3f"|format(rules|map(attribute='confidence')|max) }}</div>
+                    <div class="stat-label">Höchste Confidence</div>
+                </div>
+                <div class="stat-item text-center">
+                    <div class="stat-number">{{ "%.3f"|format(rules|map(attribute='lift')|sum / rules|length) }}</div>
+                    <div class="stat-label">Durchschnittlicher Lift</div>
+                </div>
+                <div class="stat-item text-center">
+                    <div class="stat-number">{{ "%.3f"|format(rules|map(attribute='lift')|max) }}</div>
+                    <div class="stat-label">Höchster Lift</div>
                 </div>
             </div>
 

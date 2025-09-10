@@ -21,7 +21,7 @@ from src.mining import (
     generate_association_rules,
     generate_frequent_itemsets,
     run_itemize,
-    tranform_ocel,
+    transform_ocel,
 )
 from src.preprocessing import allowed_file, get_attributes, load_ocel, save_ocel
 
@@ -29,6 +29,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=SettingWithCopyWarning)
 
 UPLOAD_FOLDER = "uploads"
+DATA_FOLDER = "data"
 ALLOWED_EXTENSIONS = {"json", "sqlite"}
 MAX_CONTENT_LENGTH = 16 * 1024 * 1024
 
@@ -37,6 +38,7 @@ app.config["UPLOAD_FOLDER"] = "uploads"
 app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
 app.secret_key = "key"
 
+os.makedirs(DATA_FOLDER, exist_ok=True)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 @app.template_filter("file_extension")
@@ -68,8 +70,8 @@ def upload_file():
                 file_path = os.path.join(upload_folder, filename)
                 file.save(file_path)
                 try:
-                    ocel = load_ocel("data/ocel.json")
-                    save_ocel(ocel, "data/ocel.json")
+                    ocel = load_ocel(file_path)
+                    save_ocel(ocel, f"{DATA_FOLDER}/ocel.json")
                     attributes = get_attributes(ocel)
 
                     return render_template(
@@ -85,7 +87,7 @@ def upload_file():
             if os.path.exists(file_path):
                 try:
                     ocel = load_ocel(file_path)
-                    save_ocel(ocel, "data/ocel.json")
+                    save_ocel(ocel, f"{DATA_FOLDER}/ocel.json")
                     attributes = get_attributes(ocel)
 
                     return render_template(
@@ -151,7 +153,7 @@ def mine():
 
     match objective:
         case "itemset":
-            transactions = tranform_ocel(ocel, items)
+            transactions = transform_ocel(ocel, items)
             frequent_itemsets = generate_frequent_itemsets(
                 transactions, float(parameters["min_sup"])
             )
@@ -168,12 +170,12 @@ def mine():
             )
 
         case "associationrule":
-            transactions = tranform_ocel(ocel, items)
+            transactions = transform_ocel(ocel, items)
             frequent_itemsets = generate_frequent_itemsets(
                 transactions, float(parameters["min_sup"])
             )
             association_rules = generate_association_rules(
-                frequent_itemsets, float(parameters["min_lift"])
+                frequent_itemsets, float(parameters["min_conf"]), float(parameters["min_lift"])
             )
             association_rules = association_rule_to_json(
                 association_rules
@@ -188,22 +190,22 @@ def mine():
             )
 
         case "classificationrule":
-            transactions = tranform_ocel(ocel, items)
+            transactions = transform_ocel(ocel, items)
             frequent_itemsets = generate_frequent_itemsets(
                 transactions, float(parameters["min_sup"])
             )
             association_rules = generate_association_rules(
-                frequent_itemsets, float(parameters["min_lift"])
+                frequent_itemsets, float(parameters["min_conf"]), float(parameters["min_lift"])
             )
             association_rules = association_rule_to_json(
                 association_rules
             )
             rules = []
-            attribute, _, _ = parameters["target"].split("-")
+            target = json.load(parameters["target"])
             for rule in association_rules:
                 if (
                     len(rule["consequents"]) == 1
-                    and rule["consequents"][0]["attribute"] == attribute
+                    and rule["consequents"][0]["attribute"] == target["attribute"]
                 ):
                     rules.append(rule)
             with open("data/classification_rules.json", "w") as f:

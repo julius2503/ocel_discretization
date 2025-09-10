@@ -69,35 +69,57 @@ def run_itemize(ocel:OCEL, attribute):
             })
             return items
 
-def tranform_ocel(ocel: OCEL, items: List[Dict[str, str]]):
-    transactions = []
-    for event_id in ocel.events["ocel:eid"].to_list():
-        transaction = []
-        events = ocel.events[ocel.events["ocel:eid"] == event_id]
-        relations = ocel.relations[ocel.relations["ocel:eid"] == event_id]
-        objects = ocel.objects[ocel.objects["ocel:oid"].isin(relations["ocel:oid"])]
-        for item in items:
-            if item["type"] == "EVENT":
-                if item["qualifier"] in events["ocel:activity"].tolist():
-                    if "interval" in item:
-                        if ((events[item["attribute"]] >= item["interval"]["start"]) & (events[item["attribute"]] <= item["interval"]["end"])).any():
-                            transaction.append(f"{item['attribute']}_{item['type']}_{item['qualifier']}_{item['interval']['start']}-{item['interval']['end']}")
-                    elif "value" in item:
-                        if (events[item["attribute"]].astype(str) == item["value"]).any():
-                            transaction.append(f"{item['attribute']}_{item['type']}_{item['qualifier']}_{item['value']}")
-            elif item["type"] == "OBJECT":
-                if item["aggregate"] != "":
-                    if ((events[item["attribute"]] >= item["interval"]["start"]) & (events[item["attribute"]] <= item["interval"]["end"])).any():
-                        transaction.append(f"{item['attribute']}_{item['type']}_{item['qualifier']}_{item['interval']['start']}-{item['interval']['end']}")
-                elif item["qualifier"] in objects["ocel:type"].tolist():
-                    if "interval" in item:
-                        if ((objects[item["attribute"]]>= item["interval"]["start"]) & (objects[item["attribute"]] <= item["interval"]["end"])).any():
-                            transaction.append(f"{item['attribute']}_{item['type']}_{item['qualifier']}_{item['interval']['start']}-{item['interval']['end']}")
-                    elif "value" in item:
-                        if (objects[item["attribute"]] == item["value"]).any():
-                            transaction.append(f"{item['attribute']}_{item['type']}_{item['qualifier']}_{item['value']}")
+def transform_ocel(ocel: OCEL, items: List[Dict[str, str]]):
+    events = ocel.events
+    relations = ocel.relations
+    objects = ocel.objects
 
-        transactions.append(transaction)
+    event_groups = {eid: df for eid, df in events.groupby("ocel:eid")}
+    relation_groups = relations.groupby("ocel:eid")["ocel:oid"].apply(set).to_dict()
+    object_groups = {eid: objects[objects["ocel:oid"].isin(oids)]for eid, oids in relation_groups.items()}
+
+    transactions: list[list[str]] = []
+    event_items = [item for item in items if item["type"] == "EVENT"]
+    object_items = [item for item in items if item["type"] == "OBJECT"]
+
+    for eid, ev_df in event_groups.items():
+        trans: list[str] = []
+        obj_df = object_groups.get(eid, pd.DataFrame())
+
+        for item in event_items:
+            if item["qualifier"] not in ev_df["ocel:activity"].values:
+                continue
+
+            col = ev_df[item["attribute"]]
+            if "interval" in item:
+                mask = col.between(item["interval"]["start"], item["interval"]["end"])
+                if mask.any():
+                    trans.append(f"{item['attribute']}_{item['type']}_{item['qualifier']}_{item['interval']['start']}-{item['interval']['end']}")
+            elif "value" in item:
+                if (col.astype(str) == str(item["value"])).any():
+                    trans.append(f"{item['attribute']}_{item['type']}_{item['qualifier']}_{item['value']}")
+
+        for item in object_items:
+            if item["qualifier"] not in obj_df["ocel:type"].values:
+                continue
+
+            if item["aggregate"]:
+                col = ev_df[item["attribute"]]
+                mask = col.between(item["interval"]["start"], item["interval"]["end"])
+                if mask.any():
+                    trans.append(f"{item['attribute']}_{item['type']}_{item['qualifier']}_{item['interval']['start']}-{item['interval']['end']}")
+                continue
+
+            col = obj_df[item["attribute"]]
+            if "interval" in item:
+                mask = col.between(item["interval"]["start"], item["interval"]["end"])
+                if mask.any():
+                    trans.append(f"{item['attribute']}_{item['type']}_{item['qualifier']}_{item['interval']['start']}-{item['interval']['end']}")
+            elif "value" in item:
+                if (col == item["value"]).any():
+                    trans.append(f"{item['attribute']}_{item['type']}_{item['qualifier']}_{item['value']}")
+
+        transactions.append(trans)
 
     te = TransactionEncoder()
     te_ary = te.fit(transactions).transform(transactions)
@@ -110,10 +132,16 @@ def generate_frequent_itemsets(transactions, min_support):
     ).sort_values("support", ascending=False)
 
 
-def generate_association_rules(frequent_itemsets, min_lift):
-    return association_rules(
-        frequent_itemsets, metric="lift", min_threshold=min_lift
-    ).sort_values("lift", ascending=False)
+def generate_association_rules(frequent_itemsets, min_confidence, min_lift):
+    rules = association_rules(
+            frequent_itemsets,
+            metric="confidence",
+            min_threshold=min_confidence
+        )
+
+    rules = rules[rules["lift"] >= min_lift]
+
+    return rules.sort_values("lift", ascending=False)
 
 
 def frequent_itemset_to_json(frequent_itemsets):

@@ -69,8 +69,8 @@ def perform_equal_width_binning(values: List[float], n_bins: int) -> List[Tuple[
     intervals: List[Tuple[float, float]] = []
 
     for i in range(n_bins):
-        start = round(min_val + i * width, 10)
-        end = round(min_val + (i + 1) * width, 2) if i < n_bins - 1 else max_val
+        start = round(min_val + i * width, 2)
+        end = round(min_val + (i + 1) * width, 2) if i < n_bins - 1 else round(max_val, 2)
         intervals.append((start, end))
 
     non_overlap: List[Tuple[float, float]] = []
@@ -78,8 +78,7 @@ def perform_equal_width_binning(values: List[float], n_bins: int) -> List[Tuple[
         # Wenn nicht das letzte Intervall und end == nächster Start:
         if i < len(intervals) - 1 and end == intervals[i + 1][0]:
             end = end - 0.01
-        non_overlap.append((start, end))
-
+        non_overlap.append((start, round(end, 2)))
     return non_overlap
 
 
@@ -141,15 +140,15 @@ def perform_kmeans_clustering(ocel, attribute, ids, labels, n_clusters):
         vals = df_result.loc[df_result["cluster"] == cid, attr].unique().tolist()
         cluster_values[cid] = vals
 
-    print(cluster_values)
+    intervals: List[Tuple[float, float]] = []
 
-    # TODO
+    for key, values in cluster_values.items():
+        min_val = min(values)
+        max_val = max(values)
 
+        intervals.append((min_val, max_val))
 
-
-
-
-
+    return intervals
 
 def _map_attribute_label(ocel, ids, attribute, type, qualifier, labels):
     match type:
