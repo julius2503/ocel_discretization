@@ -2,6 +2,15 @@
 __pycache__/
 *.py[cod]
 *$py.class
+.DS_Store
+
+# OCEL-Daten und temporäre Dateien
+/data/
+/uploads/
+/evaluation/
+
+# Einzelne Skripte, die nicht versioniert werden sollen
+validate.py
 
 # C extensions
 *.so

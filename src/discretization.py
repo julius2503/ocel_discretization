@@ -1,34 +1,64 @@
 import json
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
+from pm4py import OCEL
 from scipy.stats import chi2
 from sklearn.cluster import KMeans
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.preprocessing import StandardScaler
 
 
-def run_discretization(ocel, attribute, values, ids):
-    algorithm = attribute["algorithm"]
+def run_discretization(ocel: OCEL,attribute: Dict[str, Any], values: List[float], ids: List[Any]) -> List[Tuple[float, float]]:
+    """
+    Dispatch to the selected discretization algorithm.
 
-    match algorithm["name"]:
-        case "equal-freq":
-            bins = int(algorithm["parameters"]["bins"])
-            return perform_equal_frequency_binning(values, bins)
-        case "equal-width":
-            bins = int(algorithm["parameters"]["bins"])
-            return perform_equal_width_binning(values, bins)
-        case "chi-merge":
-            labels = algorithm["parameters"]["labels"]
-            max_intervals = int(algorithm["parameters"]["max_interval"])
-            significance = float(algorithm["parameters"]["significance"])
-            return perform_chi_merge_binning(ocel, attribute, ids, labels, max_intervals, significance)
-        case "k-means":
-            labels = algorithm["parameters"]["labels"]
-            n_clusters = int(algorithm["parameters"]["clusters"])
-            return perform_kmeans_clustering(ocel, attribute, ids, labels, n_clusters)
+    Inputs:
+        ocel      – OCEL instance (for chi-merge)
+        attribute – descriptor dict with:
+                    {
+                            "attribute": str,
+                            "type": str // "EVENT" or "OBJECT",
+                            "qualifier": str,
+                            "algorithm": {
+                                "name": srt // "equal-freq" or "equal-width" or "chi-merge" or "k-means",
+                                "parameters": {}
+                            }
+                    }
+        values    – list of numeric values for this attribute
+        ids       – list of event or object IDs corresponding to values
+
+    Output:
+        [
+            (start: float, end: float)
+        ]
+    """
+    algo = attribute["algorithm"]["name"]
+    params = attribute["algorithm"]["parameters"]
+
+    if algo == "equal-freq":
+        bins = int(params.get("bins", 5))
+        return perform_equal_frequency_binning(values, bins)
+
+    if algo == "equal-width":
+        bins = int(params.get("bins", 5))
+        return perform_equal_width_binning(values, bins)
+
+    if algo == "chi-merge":
+        labels = params.get("labels", {})
+        max_int = int(params.get("max_interval", 5))
+        signif = float(params.get("significance", 0.05))
+        return perform_chi_merge_binning(ocel, attribute, ids, labels, max_int, signif)
+
+    if algo == "k-means":
+        n_clusters = int(params.get("cluster", 3))
+        return perform_kmeans_clustering(values, n_clusters)
+
+    raise ValueError(f"Unknown discretization algorithm: {algo}")
+
 
 def perform_equal_frequency_binning(values: List[float], n_bins: int) -> List[Tuple[float, float]]:
+    """Equal-frequency binning."""
     if not values or n_bins <= 0:
         return []
 
@@ -75,127 +105,126 @@ def perform_equal_width_binning(values: List[float], n_bins: int) -> List[Tuple[
 
     non_overlap: List[Tuple[float, float]] = []
     for i, (start, end) in enumerate(intervals):
-        # Wenn nicht das letzte Intervall und end == nächster Start:
         if i < len(intervals) - 1 and end == intervals[i + 1][0]:
             end = end - 0.01
         non_overlap.append((start, round(end, 2)))
     return non_overlap
 
 
-def perform_chi_merge_binning(ocel, attribute, ids, labels, max_intervals, significance_level):
-    attr = attribute["attribute"]
-    label = json.loads(labels[0])["attribute"]
-    mapping = _map_attribute_label(ocel, ids, attribute["attribute"], attribute["type"], attribute["qualifier"], labels)
-    mapping = mapping.sort_values(attr)
-    counts = mapping.groupby(attr)[label].value_counts().unstack(fill_value=0)
+def perform_chi_merge_binning(ocel: OCEL, attribute: Dict[str, Any], ids: List[Any], labels: List[str], max_intervals: int, significance: float) -> List[Tuple[float, float]]:
+    """ChiMerge algorithm merging adjacent bins by chi-square test."""
+    numeric_attr = attribute.get("attribute", "")
+    label_attr = json.loads(labels[0]).get("attribute", "")
+
+    df = ocel.events if attribute.get("type") == "EVENT" else ocel.objects
+    for col in [df.columns[0], numeric_attr]:
+        print(col)
+        if col not in df.columns:
+            raise KeyError(f"Required column '{col}' not found in DataFrame")
+
+    mapping = _map_attribute_label(ocel, ids, attribute, labels)
+    if numeric_attr not in mapping.columns or label_attr not in mapping.columns:
+        raise KeyError("Numeric or label attribute missing after mapping")
+
+    counts = (
+        mapping
+        .groupby(numeric_attr)[label_attr]
+        .value_counts()
+        .unstack(fill_value=0)
+        .sort_index()
+    )
 
     intervals = [
-            (val, val, counts.loc[val])
-            for val in counts.index
-        ]
+        (val, val, counts.loc[val])
+        for val in counts.index
+    ]
 
     categories = counts.columns.tolist()
     dfree = len(categories) - 1
-    threshold = chi2.ppf(1 - significance_level, dfree) if dfree > 0 else 0.0
 
     while len(intervals) > max_intervals:
+        threshold = chi2.ppf(1 - significance, dfree) if dfree > 0 else 0.0
+
         chi_vals = [
             _chi2_stat(intervals[i][2], intervals[i+1][2])
             for i in range(len(intervals) - 1)
         ]
-        min_chi = min(chi_vals)
-        idx = chi_vals.index(min_chi)
 
+        min_chi = min(chi_vals)
         if min_chi > threshold:
             break
 
+        idx = chi_vals.index(min_chi)
         start1, _, counts1 = intervals[idx]
         _, end2, counts2 = intervals[idx + 1]
-        merged_counts = counts1 + counts2
+        merged_counts = counts1.add(counts2, fill_value=0)
+
         intervals[idx:idx+2] = [(start1, end2, merged_counts)]
 
     return [(start, end) for start, end, _ in intervals]
 
-def perform_kmeans_clustering(ocel, attribute, ids, labels, n_clusters):
-    attr = attribute["attribute"]
-    label_names = [json.loads(lbl)["attribute"] for lbl in labels]
-    mapping = _map_attribute_label(ocel, ids, attribute["attribute"], attribute["type"], attribute["qualifier"], labels)
+
+def perform_kmeans_clustering(values: List[float], n_clusters: int) -> List[Tuple[float, float]]:
+    X = np.array(values).reshape(-1, 1)
 
     scaler = StandardScaler()
-    X_num = scaler.fit_transform(mapping[[attr]])
-
-    encoder = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
-    X_cat = encoder.fit_transform(mapping[label_names])
-
-    X = np.hstack([X_num, X_cat])
+    X_scaled = scaler.fit_transform(X)
 
     kmeans = KMeans(n_clusters=n_clusters, random_state=42)
-    cluster_ids = kmeans.fit_predict(X)
-
-    df_result = mapping.copy()
-    df_result["cluster"] = cluster_ids
-
-    cluster_values: Dict[int, List[float]] = {}
-    for cid in range(n_clusters):
-        vals = df_result.loc[df_result["cluster"] == cid, attr].unique().tolist()
-        cluster_values[cid] = vals
+    cluster_labels = kmeans.fit_predict(X_scaled)
 
     intervals: List[Tuple[float, float]] = []
+    for cluster_id in range(n_clusters):
+        cluster_values = X[cluster_labels == cluster_id].flatten()
+        if cluster_values.size == 0:
+            intervals.append((float('nan'), float('nan')))
+        else:
+            min_val = float(cluster_values.min())
+            max_val = float(cluster_values.max())
+            intervals.append((min_val, max_val))
 
-    for key, values in cluster_values.items():
-        min_val = min(values)
-        max_val = max(values)
-
-        intervals.append((min_val, max_val))
-
+    intervals.sort(key=lambda interval: interval[0])
     return intervals
 
-def _map_attribute_label(ocel, ids, attribute, type, qualifier, labels):
-    match type:
-        case "EVENT":
-            df_filtered = ocel.events.loc[ocel.events["ocel:eid"].isin(ids), ["ocel:eid", attribute]].copy()
-            for label in labels:
-                label = json.loads(label)
+def _map_attribute_label(ocel: OCEL, ids: List[Any], attribute: Dict[str, Any], labels: List[str]) -> pd.DataFrame:
+    """
+    Build DataFrame with original numeric attribute and associated label for chi-merge.
+    """
+    df = ocel.events if attribute.get("type", "") == "EVENT" else ocel.objects
+    df = df.loc[df[df.columns[0]].isin(ids), ["ocel:eid", attribute.get("attribute", "")]].copy()
 
-                match label["type"]:
-                    case "EVENT":
-                        df_label = ocel.events.loc[:, ["ocel:eid", label["attribute"]]]
-                        df_filtered = df_filtered.merge(df_label, on="ocel:eid", how="left")
+    for label in labels:
+        label = json.loads(label)
+        qualifier = label.get("qualifier")
+        if label.get("type", "") == "EVENT":
+            col = ocel.events.loc[ocel.events["ocel:activity"] == qualifier, ["ocel:eid", label.get("attribute", "")]]
+            df = df.merge(col, on="ocel:eid", how="left")
+        else:
+            rel = ocel.relations.loc[ocel.relations["ocel:type"] == qualifier, ["ocel:eid", "ocel:oid"]]
+            obj = ocel.objects.loc[ocel.objects["ocel:type"] == qualifier, ["ocel:oid", label.get("attribute", "")]]
+            df = df.merge(rel.merge(obj, on="ocel:oid", how="left").groupby("ocel:eid")[label.get("attribute", "")].apply(_most_common), on="ocel:eid", how="left")
 
-                    case "OBJECT":
-                        rel = ocel.relations[["ocel:eid", "ocel:oid"]]
-                        obj = ocel.objects[["ocel:oid", "ocel:type", label["attribute"]]]
-                        merged = rel.merge(obj, on="ocel:oid", how="left")
-                        merged = merged[merged["ocel:type"] == label["qualifier"]]
-                        agg = merged.groupby("ocel:eid")[label["attribute"]].apply(_most_common)
-                        df_filtered = df_filtered.merge(agg.reset_index(), on="ocel:eid", how="left")
+    return df.drop("ocel:eid", axis=1)
 
-                    case _:
-                        raise Exception("Label ist weder vom Typ Event noch Object")
-
-            return df_filtered.drop("ocel:eid", axis=1)
-
-        case "OBJECT":
-            df_filtered = ocel.objects.loc[ocel.objects["ocel:oid"].isin(ids), ["ocel:oid", attribute]].copy()
-            for label in labels:
-                label = json.loads(label)
-                df_label = ocel.objects.loc[:, ["ocel:oid", label["attribute"]]]
-                df_filtered = df_filtered.merge(df_label, on="ocel:oid", how="left")
-
-            return df_filtered.drop("ocel:oid", axis=1)
-
-        case _:
-            raise Exception("Numerisches Attribut ist weder vom Typ Event noch Object")
 
 def _most_common(series: pd.Series):
+    """
+    Return the most frequent value.
+    """
     counts = series.dropna().value_counts()
     return counts.idxmax() if not counts.empty else None
 
+
 def _chi2_stat(c1: pd.Series, c2: pd.Series) -> float:
+    """Compute chi-square statistic between two count vectors."""
     obs = np.vstack([c1.to_numpy(dtype=float), c2.to_numpy(dtype=float)])
+    total = obs.sum()
+    if total == 0:
+        return 0.0
+
     row_sum = obs.sum(axis=1, keepdims=True)
     col_sum = obs.sum(axis=0, keepdims=True)
-    total = obs.sum()
     exp = row_sum.dot(col_sum) / total
+
     mask = exp > 0
     return float(((obs - exp) ** 2 / exp)[mask].sum())

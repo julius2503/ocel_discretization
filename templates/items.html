@@ -221,14 +221,10 @@
                                 <td>{{ elem.qualifier }}</td>
                                 <td class="interval-value-container">
                                     {% if elem.interval is defined %}
-                                    <div class="intervall-pill">
-                                        [{{ elem.interval.start }}, {{ elem.interval.end }}]
-                                    </div>
+                                    <div class="intervall-pill">[{{ elem.interval.start }}, {{ elem.interval.end }}]</div>
                                     {% endif %}
                                     {% if elem.value is defined %}
-                                    <div class="value-pill">
-                                        {{ elem.value }}
-                                    </div>
+                                    <div class="value-pill">{{ elem.value }}</div>
                                     {% endif %}
                                 </td>
                                 <td>

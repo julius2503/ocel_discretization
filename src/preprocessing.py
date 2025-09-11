@@ -1,230 +1,235 @@
-from typing import List
+import os
+from typing import Any, Dict, List
 
 import pandas as pd
 import pm4py
 from pm4py import OCEL
 
 
-def allowed_file(filename: str, allowed_extensions: str) -> bool:
-    return '.' in filename and filename.split(".")[1] in allowed_extensions
+def allowed_file(filename: str, allowed_extensions: set[str]) -> bool:
+    """
+    Check if the filename has an allowed extension.
+
+    Inputs:
+        filename           – name of the file (e.g. 'log.json')
+        allowed_extensions – set or list of extensions (e.g. {'json','sqlite'})
+
+    Output:
+        True if extension is allowed, False otherwise.
+    """
+    if "." not in filename:
+        return False
+    return filename.rsplit(".", 1)[-1].lower() in allowed_extensions
+
 
 def load_ocel(file_path: str) -> OCEL:
-    file_type = file_path.split(".")[1]
+    """
+    Load an OCEL from JSON or SQLite file.
 
-    match file_type:
-        case "json":
-            return pm4py.read_ocel2_json(file_path=file_path)
-        case "sqlite":
-            return pm4py.read_ocel2_sqlite(file_path=file_path)
-        case _:
-            return pm4py.read_ocel2(file_path=file_path)
+    Input:
+        file_path – path to .json or .sqlite OCEL file
+
+    Output:
+        OCEL instance
+
+    Raises:
+        FileNotFoundError if file does not exist.
+        ValueError if extension is unsupported.
+    """
+    if not os.path.isfile(file_path):
+        raise FileNotFoundError(f"OCEL file not found: {file_path}")
+
+    ext = file_path.rsplit(".", 1)[-1].lower()
+    if ext == "json":
+        return pm4py.read_ocel2_json(file_path=file_path)
+    if ext == "sqlite":
+        return pm4py.read_ocel2_sqlite(file_path=file_path)
+    raise ValueError(f"Unsupported OCEL file type: .{ext}")
+
 
 def save_ocel(ocel: OCEL, file_path: str) -> None:
+    """
+    Serialize an OCEL instance to JSON format.
+
+    Inputs:
+        ocel      – OCEL instance
+        file_path – destination path ending in .json
+
+    Raises:
+        IOError on write failures.
+    """
+    directory = os.path.dirname(file_path)
+    if directory and not os.path.isdir(directory):
+        os.makedirs(directory, exist_ok=True)
     pm4py.write_ocel2_json(ocel, file_path)
 
-def get_attribute_values(ocel: OCEL, attribute, qualifier, type):
-    match type:
-        case "EVENT":
-            values = ocel.events[ocel.events["ocel:activity"] == qualifier][attribute].unique().tolist()
-            return [{"value": str(v)} for v in values]
 
-        case "OBJECT":
-            values = ocel.objects[ocel.objects["ocel:type"] == qualifier][attribute].unique().tolist()
-            return [{"value": str(v)} for v in values]
-
-
-def get_attributes(ocel: OCEL) -> List[List[str]]:
+def _populate_related(ocel: OCEL, descriptors: List[Dict[str, Any]]) -> None:
+    """Fill each descriptor's `related` list with same- and cross-entity attrs."""
     events = pd.DataFrame(ocel.events)
     objects = pd.DataFrame(ocel.objects)
 
-    event_cols = {'ocel:eid', 'ocel:timestamp', 'ocel:activity'}
-    object_cols = {'ocel:oid', 'ocel:timestamp', 'ocel:type'}
+    def _vals(attr: str, qualifier: str, type: str) -> List[Dict[str, str]]:
+        df = events if type == "EVENT" else objects
+        col = "ocel:activity" if type == "EVENT" else "ocel:type"
+        series = pd.DataFrame(df[df[col] == qualifier])[attr].dropna().unique()
+        return [{"value": str(v)} for v in series]
 
-    attributes = [col for col in events.columns if col not in event_cols]
+    for base in descriptors:
+        attr = base.get("attribute", "")
+        type = base.get("type", "")
+        qualifier = base.get("qualifier", "")
 
-    result = []
+        for other in descriptors:
+            if (
+                other.get("type") == type
+                and other.get("qualifier") == qualifier
+                and other.get("attribute") != attr
+            ):
+                base.get("related", []).append({
+                    "attribute": other.get("attribute", ""),
+                    "type": other.get("type", ""),
+                    "qualifier": other.get("qualifier", ""),
+                    "vals": _vals(other.get("attribute", ""), qualifier, type)
+                })
 
-    for attr in attributes:
-        attribute = attr
-        qualifier = events[events[attr].notna()]['ocel:activity'].unique()
-        type = "EVENT"
+        rel = ocel.relations
+        if type == "EVENT":
+            for obj_t in pd.DataFrame(rel[rel["ocel:activity"] == qualifier])["ocel:type"].unique():
+                for other in descriptors:
+                    if other.get("type") == "OBJECT" and other.get("qualifier") == obj_t:
+                        base.get("related", []).append({
+                            "attribute": other.get("attribute", ""),
+                            "type": "OBJECT",
+                            "qualifier": obj_t,
+                            "vals": _vals(other.get("attribute", ""), obj_t, "OBJECT")
+                        })
+        else:
+            for act in pd.DataFrame(rel[rel["ocel:type"] == qualifier])["ocel:activity"].unique():
+                for other in descriptors:
+                    if other.get("type") == "EVENT" and other.get("qualifier") == act:
+                        base.get("related", []).append({
+                            "attribute": other.get("attribute", ""),
+                            "type": "EVENT",
+                            "qualifier": act,
+                            "vals": _vals(other.get("attribute", ""), act, "EVENT")
+                        })
 
-        for activity in qualifier:
-            result.append(
-                {
-                    "attribute": attribute,
-                    "type": type,
-                    "qualifier": activity,
-                    "related" : get_related_attributes(ocel, attribute, type, activity)
-                }
-            )
 
-    attributes = [col for col in objects.columns if col not in object_cols]
+def get_attributes(ocel: OCEL) -> List[Dict[str, Any]]:
+    """
+    Extract all event and object attributes, with their qualifiers and related attrs.
 
-    for attr in attributes:
-        attribute = attr
-        qualifier = objects[objects[attr].notna()]['ocel:type'].unique()
-        type = "OBJECT"
+    Input:
+      ocel – OCEL instance
 
-        for activity in qualifier:
-            result.append(
-                {
-                    "attribute": attribute,
-                    "type": type,
-                    "qualifier": activity,
-                    "related" : get_related_attributes(ocel, attribute, type, activity)
-                }
-            )
+    Output:
+        [{
+            "attribute": str,
+            "type": str // "EVENT" or "OBJECT",
+            "qualifier": str,
+            "related": [{
+                    "attribute": str,
+                    "type": str // "EVENT" or "OBJECT",
+                    "qualifier": str,
+                    "vals": [{
+                        "value": str
+                    }]
+            }]
+        }]
+    """
+    events = pd.DataFrame(ocel.events)
+    objects = pd.DataFrame(ocel.objects)
 
-    return result
+    event_core = {"ocel:eid", "ocel:timestamp", "ocel:activity"}
+    object_core = {"ocel:oid", "ocel:timestamp", "ocel:type"}
 
-def get_attribute_list(ocel: OCEL):
-    events = ocel.events
-    objects = ocel.objects
+    descriptors: List[Dict[str, Any]] = []
 
-    event_cols = {'ocel:eid', 'ocel:timestamp', 'ocel:activity'}
-    object_cols = {'ocel:oid', 'ocel:timestamp', 'ocel:type'}
+    for attr in [c for c in events.columns if c not in event_core]:
+        quals = pd.DataFrame(events[events[attr].notna()])["ocel:activity"].unique()
+        for qual in quals:
+            descriptors.append({
+                "attribute": attr,
+                "type": "EVENT",
+                "qualifier": qual,
+                "related": []
+            })
 
-    attributes = [col for col in events.columns if col not in event_cols]
+    for attr in [c for c in objects.columns if c not in object_core]:
+        quals = pd.DataFrame(objects[objects[attr].notna()])["ocel:type"].unique()
+        for qual in quals:
+            descriptors.append({
+                "attribute": attr,
+                "type": "OBJECT",
+                "qualifier": qual,
+                "related": []
+            })
 
-    result = []
+    _populate_related(ocel, descriptors)
+    return descriptors
 
-    for attr in attributes:
-        attribute = attr
-        qualifier = events[events[attr].notna()]['ocel:activity'].unique()
-        type = "EVENT"
 
-        for activity in qualifier:
-            result.append(
-                {
-                    "attribute": attribute,
-                    "type": type,
-                    "qualifier": activity,
-                }
-            )
+def get_attribute_values(ocel: OCEL, attribute: str, qualifier: str, entity_type: str) -> List[Dict[str, str]]:
+    """
+    Get distinct values of an attribute for a given event activity or object type.
 
-    attributes = [col for col in objects.columns if col not in object_cols]
+    Inputs:
+      ocel         – OCEL instance
+      attribute    – column name
+      qualifier    – activity name if EVENT or object type if OBJECT
+      entity_type  – "EVENT" or "OBJECT"
 
-    for attr in attributes:
-        attribute = attr
-        qualifier = objects[objects[attr].notna()]['ocel:type'].unique()
-        type = "OBJECT"
+    Output:
+      List of {"value": str} for each unique non-null value.
+    """
+    if entity_type == "EVENT":
+        vals = ocel.events.loc[ocel.events["ocel:activity"] == qualifier, attribute].dropna().unique()
+    elif entity_type == "OBJECT":
+        vals = ocel.objects.loc[ocel.objects["ocel:type"] == qualifier, attribute].dropna().unique()
+    else:
+        raise ValueError(f"Unknown entity_type: {entity_type}")
+    return [{"value": str(v)} for v in vals]
 
-        for activity in qualifier:
-            result.append(
-                {
-                    "attribute": attribute,
-                    "type": type,
-                    "qualifier": activity
-                }
-            )
 
-    return result
+def split_numerical_attribute(ocel: OCEL, type: str, splits: List[Dict[str, Any]]) -> pd.DataFrame:
+    """
+    Filter events or objects by split criteria before numeric discretization.
 
-def get_related_attributes(ocel:OCEL, attribute:str, type: str, qualifier: str) -> List[str]:
+    Inputs:
+      ocel         – OCEL instance
+      type  – "EVENT" or "OBJECT"
+      splits       – list of dicts:
+        {"type":"EVENT"/"OBJECT","attribute":str,"qualifier":str,"selected_value":str}
 
-    attributes = get_attribute_list(ocel=ocel)
-
-    related_object_types = []
-
+    Output:
+      Filtered DataFrame of events or objects for numeric discretization.
+    """
     if type == "EVENT":
-        for value in [value["attribute"] for value in attributes if value["qualifier"] == qualifier]:
-            if value != attribute:
-                related_object_types.append(
-                    {
-                        "attribute": value,
-                        "type": "EVENT",
-                        "qualifier": qualifier,
-                        "vals": get_attribute_values(ocel, value, qualifier, "EVENT")
-                    }
-                )
+        df = ocel.events.copy()
+        rel = ocel.relations
+        for split in splits:
+            val = split.get("selected_value", "")
+            if val is None:
+                continue
+            if split.get("type", "") == "EVENT":
+                df = pd.DataFrame(df[df[split.get("attribute", "")].astype(str) == val])
+            else:
+                oids = ocel.objects[
+                    (ocel.objects["ocel:type"] == split.get("qualifier", "")) &
+                    (ocel.objects[split.get("attribute", "")].astype(str) == val)
+                ]["ocel:oid"]
+                eids = rel[rel["ocel:oid"].isin(pd.Series(oids))]["ocel:eid"]
+                df = pd.DataFrame(df[pd.Series(df["ocel:eid"]).isin(pd.Series(eids))])
+        return df
 
-        e2o = ocel.relations[ocel.relations["ocel:activity"] == qualifier]
-        related_objects = e2o["ocel:type"].unique()
+    if type == "OBJECT":
+        df = ocel.objects.copy()
+        for split in splits:
+            val = split.get("selected_value", "")
+            if val is None:
+                continue
+            df = pd.DataFrame(df[(df["ocel:type"] == split.get("qualifier", "")) &(df[split.get("attribute", "")].astype(str) == val)])
+        return df
 
-        for object in related_objects:
-            for value in [value["attribute"] for value in attributes if value["qualifier"] == object]:
-                related_object_types.append(
-                    {
-                        "attribute": value,
-                        "type": "OBJECT",
-                        "qualifier": object,
-                        "vals": get_attribute_values(ocel, value, object, "OBJECT")
-                    }
-                )
-
-    elif type == "OBJECT":
-        for value in [value["attribute"] for value in attributes if value["qualifier"] == qualifier]:
-            if value != attribute:
-                related_object_types.append(
-                    {
-                        "attribute": value,
-                        "type": type,
-                        "qualifier": qualifier,
-                        "vals": get_attribute_values(ocel, value, qualifier, type)
-                    }
-                )
-
-        o2o = o2o_mapping(ocel=ocel)
-        o2o = o2o[o2o["source"] == qualifier]
-        related_objects = o2o["target"].unique()
-        for object in related_objects:
-            for value in [value["attribute"] for value in attributes if value["qualifier"] == object]:
-                related_object_types.append(
-                    {
-                        "attribute": value,
-                        "type": type,
-                        "qualifier": object,
-                        "vals": get_attribute_values(ocel, value, object, type)
-                    }
-                )
-
-    return related_object_types
-
-def o2o_mapping(ocel: OCEL) -> pd.DataFrame:
-    object_types = ocel.objects[[ocel.object_id_column, ocel.object_type_column]]
-    oid_to_otype = dict(zip(
-        object_types[ocel.object_id_column],
-        object_types[ocel.object_type_column]
-    ))
-    o2o_relations = ocel.o2o.copy()
-
-    o2o_relations["source"] = o2o_relations[ocel.object_id_column].map(oid_to_otype)
-    o2o_relations["target"] = o2o_relations[ocel.object_id_column + "_2"].map(oid_to_otype)
-
-    return o2o_relations
-
-def split_numerical_attribute(ocel: OCEL, type, splits):
-    match type:
-        case "EVENT":
-            events = ocel.events
-            objects = ocel.objects
-            relations = ocel.relations
-
-            for split in splits:
-                if split["selected_value"] is None:
-                    continue
-                match split["type"]:
-                    case "EVENT":
-                        events = events[events[split["attribute"]].astype(str) == split["selected_value"]]
-
-                    case "OBJECT":
-                        fitting_oids = objects[(objects["ocel:type"] == split["qualifier"]) & (objects[split["attribute"]].astype(str) == split["selected_value"])]["ocel:oid"].tolist()
-                        fitting_eids = relations[relations["ocel:oid"].isin(fitting_oids)]["ocel:eid"].unique().tolist()
-                        events = events[events["ocel:eid"].isin(fitting_eids)]
-
-                    case _:
-                        raise Exception("Weder EVENT noch OBJECTS")
-
-            return events
-
-        case "OBJECT":
-            objects = ocel.objects
-
-            for split in splits:
-                objects = objects[(objects["ocel:type"] == split["qualifier"]) & (objects[split["attribute"]].astype(str) == split["selected_value"])]
-
-            return objects
-
-        case _:
-            raise Exception("Weder EVENT noch OBJECTS")
+    raise ValueError(f"Unknown entity_type: {type}")

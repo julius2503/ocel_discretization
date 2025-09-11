@@ -4,20 +4,10 @@
         <meta charset="UTF-8" />
         <title>Frequent Itemsets</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link
-            href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
-            rel="stylesheet"
-        />
-        <script
-            src="https://unpkg.com/htmx.org@2.0.4"
-            integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+"
-            crossorigin="anonymous"
-        ></script>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
+        <script src="https://unpkg.com/htmx.org@2.0.4" integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+" crossorigin="anonymous"></script>
         <script src="https://unpkg.com/htmx.org/dist/ext/json-enc.js"></script>
-        <script
-            defer
-            src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
-        ></script>
+        <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
         <style>
             .itemset-card {
                 margin-bottom: 2rem;
@@ -151,16 +141,19 @@
         </style>
     </head>
     <body>
-        <div class="container my-5">
-            <a
-                href="{{ url_for('show_items') }}"
-                class="btn btn-secondary me-3"
-            >
-                Zurück zu Items
-            </a>
-            <a href="{{ url_for('upload_file') }}" class="btn btn-secondary">
-                Neue Analyse starten
-            </a>
+        <div class="container my-5 d-flex justify-content-between align-items-center">
+            <div>
+                <a href="{{ url_for('show_items') }}" class="btn btn-secondary me-3">Zurück zu Items</a>
+                <a href="{{ url_for('upload_file') }}" class="btn btn-secondary">Neue Analyse starten</a>
+            </div>
+            <div>
+                <a href="{{ url_for('download_ocel') }}" class="btn btn-success me-3">
+                  <i class="bi bi-download"></i> OCEL
+                </a>
+                <a href="{{ url_for('download_pattern', pattern_name='itemset') }}" class="btn btn-success">
+                  <i class="bi bi-download"></i> ITEMSETS
+                </a>
+              </div>
         </div>
 
         <div class="container my-5">
@@ -171,42 +164,26 @@
                 <div class="row">
                     <div class="col-md-3">
                         <div class="stat-item">
-                            <div class="stat-number">
-                                {{ frequent_itemsets|length }}
-                            </div>
+                            <div class="stat-number">{{ frequent_itemsets|length }}</div>
                             <div class="stat-label">Frequent Itemsets</div>
                         </div>
                     </div>
                     <div class="col-md-3">
                         <div class="stat-item">
-                            <div class="stat-number">
-                                {{
-                                "%.3f"|format(frequent_itemsets[0]['support'])
-                                }}
-                            </div>
+                            <div class="stat-number">{{"%.3f"|format(frequent_itemsets[0]['support'])}}</div>
                             <div class="stat-label">Höchster Support</div>
                         </div>
                     </div>
                     <div class="col-md-3">
                         <div class="stat-item">
-                            <div class="stat-number">
-                                {{
-                                "%.3f"|format(frequent_itemsets[-1]['support'])
-                                }}
-                            </div>
+                            <div class="stat-number">{{"%.3f"|format(frequent_itemsets[-1]['support'])}}</div>
                             <div class="stat-label">Niedrigster Support</div>
                         </div>
                     </div>
                     <div class="col-md-3">
                         <div class="stat-item">
-                            <div class="stat-number">
-                                {{
-                                "%.3f"|format(frequent_itemsets|map(attribute='support')|sum
-                                / frequent_itemsets|length) }}
-                            </div>
-                            <div class="stat-label">
-                                Durchschnittlicher Support
-                            </div>
+                            <div class="stat-number">{{"%.3f"|format(frequent_itemsets|map(attribute='support')|sum / frequent_itemsets|length)}}</div>
+                            <div class="stat-label">Durchschnittlicher Support</div>
                         </div>
                     </div>
                 </div>
@@ -214,9 +191,7 @@
 
             <div class="itemset-card">
                 <div class="table-responsive">
-                    <table
-                        class="table itemset-table table-bordered align-middle"
-                    >
+                    <table class="table itemset-table table-bordered align-middle">
                         <thead class="table-light">
                             <tr>
                                 <th>Rang</th>
@@ -228,43 +203,22 @@
                             {% for itemset in frequent_itemsets %}
                             <tr>
                                 <td>
-                                    <span
-                                        class="badge badge-rank {% if loop.index <= 3 %}top-3{% endif %}"
-                                    >
-                                        {{ loop.index }}
-                                    </span>
+                                    <span class="badge badge-rank {% if loop.index <= 3 %}top-3{% endif %}">{{ loop.index }}</span>
                                 </td>
                                 <td>
-                                    <div
-                                        class="d-flex flex-wrap gap-1 justify-content-center"
-                                    >
+                                    <div class="d-flex flex-wrap gap-1 justify-content-center">
                                         {% for item in itemset.item %}
-                                        <span
-                                            class="attribute-item {% if item.type == 'EVENT' %}event{% else %}object{% endif %}"
-                                        >
-                                            <strong>{{ item.attribute }}</strong
-                                            >: {{ item.value }} <br /><small
-                                                >{{ item.type }} ({{
-                                                item.qualifier }})</small
-                                            >
+                                        <span class="attribute-item {% if item.type == 'EVENT' %}event{% else %}object{% endif %}">
+                                            <strong>{{ item.attribute }}</strong>: {{ item.value }} <br /><small>{{ item.type }} ({{item.qualifier }})</small>
                                         </span>
                                         {% endfor %}
                                     </div>
                                 </td>
                                 <td class="support-container">
-                                    <span class="support-badge"
-                                        >{{ "%.3f"|format(itemset.support)
-                                        }}</span
-                                    >
-                                    <small class="text-muted"
-                                        >{{ "%.1f"|format(itemset.support * 100)
-                                        }}%</small
-                                    >
+                                    <span class="support-badge">{{ "%.3f"|format(itemset.support)}}</span>
+                                    <small class="text-muted">{{ "%.1f"|format(itemset.support * 100)}}%</small>
                                     <div class="support-bar">
-                                        <div
-                                            class="support-fill"
-                                            style="width: {{ (itemset.support / frequent_itemsets[0]['support'] * 100)|round(1) }}%"
-                                        ></div>
+                                        <div class="support-fill" style="width: {{ (itemset.support / frequent_itemsets[0]['support'] * 100)|round(1) }}%"></div>
                                     </div>
                                 </td>
                             </tr>
@@ -278,16 +232,8 @@
             <div class="itemset-card">
                 <div class="no-data">
                     <h3>Keine Frequent Itemsets gefunden</h3>
-                    <p>
-                        Es wurden keine Frequent Itemsets mit den aktuellen
-                        Parametern gefunden.
-                    </p>
-                    <a
-                        href="{{ url_for('show_items') }}"
-                        class="btn btn-primary"
-                    >
-                        Zurück zu Items
-                    </a>
+                    <p>Es wurden keine Frequent Itemsets mit den aktuellen Parametern gefunden.</p>
+                    <a href="{{ url_for('show_items') }}" class="btn btn-primary">Zurück zu Items</a>
                 </div>
             </div>
             {% endif %}

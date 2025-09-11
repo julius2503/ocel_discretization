@@ -1,211 +1,358 @@
-from typing import Dict, List
+import os
+from typing import Any, Dict, List, Tuple
 
 import pandas as pd
 from mlxtend.frequent_patterns import apriori, association_rules
 from mlxtend.preprocessing import TransactionEncoder
 from pm4py import OCEL
 
+from config import DATA_FOLDER
 from src.discretization import run_discretization
-from src.preprocessing import split_numerical_attribute
+from src.preprocessing import load_ocel, save_ocel, split_numerical_attribute
 
 
-def run_itemize(ocel:OCEL, attribute):
-    attr = attribute["attribute"]
-    qualifier = attribute["qualifier"]
-    type = attribute["type"]
-    splits = attribute.get("split_attributes", None)
-    aggregation = attribute["aggregation"]
+def run_itemize(ocel: OCEL, attribute: Dict[str, Any]) -> List[Dict]:
+    """
+    Convert a selected attribute into discrete items for mining.
 
-    match attribute["numeric"]:
-        case True:
-            match type:
-                case "EVENT":
-                    events = split_numerical_attribute(ocel, type, splits)
+    Inputs:
+        ocel: OCEL
+        attribute: {
+            "attribute": str,
+            "type": str // "EVENT" or "OBJECT",
+            "qualifier": str,
+            "numeric": bool,
+            "split_attributes": List[Dict],
+            "aggregation": str
+        }
+    Output:
+        [{
+            "attribute": str,
+            "type": str // "EVENT" or "OBJECT",
+            "qualifier": str,
+            "aggregate": str,
+            "value": str // for categorical attributes,
+            "interval": {
+                "start": float,
+                "end": float
+            } // for discretized attributes
+        }]
 
-                    values = events[events["ocel:activity"] == qualifier][attr].values.tolist()
-                    ids = events[events["ocel:activity"] == qualifier]["ocel:eid"].values.tolist()
+    """
+    attr = attribute.get("attribute", "")
+    qualifier = attribute.get("qualifier", "")
+    type = attribute.get("type", "")
+    splits = attribute.get("split_attributes", [])
+    aggregation = attribute.get("aggregation", "")
 
-                    intervals = run_discretization(ocel, attribute, values, ids)
+    if attribute.get("numeric", False):
+        if type == "EVENT":
+            df = split_numerical_attribute(ocel, type, splits)
 
-                case "OBJECT":
-                    objects = split_numerical_attribute(ocel, type, splits)
+            values = df[df["ocel:activity"] == qualifier][attr].astype(float).tolist()
+            ids = df[df["ocel:activity"] == qualifier]["ocel:eid"].tolist()
 
-                    if aggregation != "":
-                        values = ocel.events[attr].values.tolist()
-                    else:
-                        values = objects[objects["ocel:type"] == qualifier][attr].values.tolist()
+        elif type == "OBJECT":
+            df = split_numerical_attribute(ocel, type, splits)
+            if aggregation:
+                df = ocel.events
+                values = df[attr].astype(float).tolist()
+                ids = []
+            else:
+                values = df[df["ocel:type"] == qualifier][attr].astype(float).tolist()
+                ids = df[df["ocel:type"] == qualifier]["ocel:oid"].tolist()
+        else:
+            raise ValueError(f"Unknown type for numeric attribute: {type}")
 
-                    ids = objects[objects["ocel:type"] == qualifier]["ocel:oid"].values.tolist()
+        intervals = run_discretization(ocel, attribute, values, ids)
+        if not aggregation:
+            _apply_intervals_to_ocel(attribute, intervals)
 
-                    intervals = run_discretization(ocel, attribute, values, ids)
-
-            items = [{
+        return [
+            {
                 "attribute": attr,
                 "type": type,
                 "qualifier": qualifier,
+                "interval": {"start": start, "end": end},
+                "aggregate": aggregation,
+            }
+            for start, end in intervals
+        ]
+
+    if type == "EVENT":
+        values = ocel.events.loc[
+            ocel.events["ocel:activity"] == qualifier, attr
+        ].astype(str).unique()
+    elif type == "OBJECT":
+        values = ocel.objects.loc[
+            ocel.objects["ocel:type"] == qualifier, attr
+        ].astype(str).unique()
+    else:
+        raise ValueError(f"Unknown type for categorical attribute: {type}")
+
+    return [
+        {"attribute": attr, "type": type, "qualifier": qualifier, "value": val, "aggregate": aggregation}
+        for val in values
+    ]
+
+
+def _apply_intervals_to_ocel(
+    attribute: Dict[str, Any],
+    intervals: List[Tuple[float, float]]
+) -> None:
+    """
+    Saves a new OCEL where the numeric values of one attribute have been
+    replaced by their interval labels.
+
+    Inputs:
+        attribute  – descriptor dict with keys:
+            {
+                "qualifier": str,
+                "aggregate": str,
                 "interval": {
-                    "start": start,
-                    "end": end
-                },
-                "aggregate": aggregation
-            } for start, end in intervals]
-            return items
+                    "start": float,
+                    "end": float
+                }
+            }
+        intervals  – list of (start, end) tuples from discretization
 
-        case False:
-            match type:
-                case "EVENT":
-                    values = ocel.events[ocel.events["ocel:activity"] == qualifier][attr].unique()
-                case "OBJECT":
-                    values = ocel.objects[ocel.objects["ocel:type"] == qualifier][attr].unique()
+    Output:
+        A deep copy of the input OCEL, with the original numeric column
+        overwritten by the string "start-end" for values falling in that
+        interval.
+    """
+    ocel = load_ocel(os.path.join(DATA_FOLDER, "ocel.json"))
 
-            items = []
-            for value in values:
-                items.append({
-                    "attribute": attr,
-                    "type": type,
-                    "qualifier": qualifier,
-                    "value": str(value),
-                    "aggregate": aggregation
-            })
-            return items
+    attr = attribute.get("attribute", "")
+    type = attribute.get("type", "")
+    qualifier = attribute.get("qualifier", "")
 
-def transform_ocel(ocel: OCEL, items: List[Dict[str, str]]):
-    events = ocel.events
-    relations = ocel.relations
-    objects = ocel.objects
+    if type == "EVENT":
+        df = ocel.events
+        base_mask = df["ocel:activity"] == qualifier
+    else:
+        df = ocel.objects
+        base_mask = df["ocel:type"] == qualifier
 
-    event_groups = {eid: df for eid, df in events.groupby("ocel:eid")}
-    relation_groups = relations.groupby("ocel:eid")["ocel:oid"].apply(set).to_dict()
-    object_groups = {eid: objects[objects["ocel:oid"].isin(oids)]for eid, oids in relation_groups.items()}
+    df[attr].astype(float)
+    temp_col = f"__{attr}__"
+    df[temp_col] = None
+
+    for start, end in intervals:
+        label = f"[{start}-{end}]"
+        mask = base_mask & df[attr].between(start, end)
+        df.loc[mask, temp_col] = label
+
+    save_ocel(ocel, os.path.join(DATA_FOLDER, "ocel.json"))
+
+def transform_ocel(ocel: OCEL, items: List[Dict[str, Any]]) -> pd.DataFrame:
+    """
+    Build a transaction matrix (one-hot encoded) from OCEL events and objects.
+
+    Inputs:
+        ocel: OCEL
+        items: [{
+            "attribute": str,
+            "type": str // "EVENT" or "OBJECT",
+            "qualifier": str,
+            "aggregate": str,
+            "value": str // for categorical attributes,
+            "interval": {
+                "start": float,
+                "end": float
+            } // for discretized attributes
+        }]
+
+    Output:
+        DataFrame where rows are event IDs and columns are item strings; True if present.
+    """
+
+    event_groups = {eid: df for eid, df in ocel.events.groupby("ocel:eid")}
+    relation_groups = ocel.relations.groupby("ocel:eid")["ocel:oid"].apply(set).to_dict()
+    object_groups = {eid: ocel.objects[ocel.objects["ocel:oid"].isin(oids)]for eid, oids in relation_groups.items()}
 
     transactions: list[list[str]] = []
-    event_items = [item for item in items if item["type"] == "EVENT"]
-    object_items = [item for item in items if item["type"] == "OBJECT"]
+    event_items = [item for item in items if item.get("type", "") == "EVENT"]
+    object_items = [item for item in items if item.get("type", "") == "OBJECT"]
 
     for eid, ev_df in event_groups.items():
         trans: list[str] = []
         obj_df = object_groups.get(eid, pd.DataFrame())
 
         for item in event_items:
-            if item["qualifier"] not in ev_df["ocel:activity"].values:
+            if item.get("qualifier", "") not in ev_df["ocel:activity"].values:
                 continue
 
-            col = ev_df[item["attribute"]]
+            col = ev_df[item.get("attribute", "")]
             if "interval" in item:
-                mask = col.between(item["interval"]["start"], item["interval"]["end"])
+                mask = col.between(item.get("interval", {}).get("start", -1), item.get("interval", {}).get("end", -1))
                 if mask.any():
-                    trans.append(f"{item['attribute']}_{item['type']}_{item['qualifier']}_{item['interval']['start']}-{item['interval']['end']}")
+                    trans.append(f"{item.get('attribute', '')}_{item.get('type', '')}_{item.get('qualifier', '')}_{item.get('interval', {}).get('start', -1)}-{item.get('interval', {}).get('end', -1)}")
             elif "value" in item:
-                if (col.astype(str) == str(item["value"])).any():
-                    trans.append(f"{item['attribute']}_{item['type']}_{item['qualifier']}_{item['value']}")
+                if (col.astype(str) == str(item.get("value", ""))).any():
+                    trans.append(f"{item.get('attribute', '')}_{item.get('type', '')}_{item.get('qualifier', '')}_{item.get('value', '')}")
 
         for item in object_items:
-            if item["qualifier"] not in obj_df["ocel:type"].values:
+            if item.get("qualifier", '') not in pd.DataFrame(obj_df["ocel:type"]).values:
                 continue
 
-            if item["aggregate"]:
-                col = ev_df[item["attribute"]]
-                mask = col.between(item["interval"]["start"], item["interval"]["end"])
+            if item.get("aggregate", None):
+                col = ev_df[item.get("attribute", "")]
+                mask = col.between(item.get("interval", {}).get("start", -1), item.get("interval", {}).get("end", -1))
                 if mask.any():
-                    trans.append(f"{item['attribute']}_{item['type']}_{item['qualifier']}_{item['interval']['start']}-{item['interval']['end']}")
+                    trans.append(f"{item.get('attribute', '')}_{item.get('type', '')}_{item.get('qualifier', '')}_{item.get('interval', {}).get('start', -1)}-{item.get('interval', {}).get('end', -1)}")
                 continue
 
-            col = obj_df[item["attribute"]]
+            col = pd.Series(obj_df[item.get("attribute", "")])
             if "interval" in item:
-                mask = col.between(item["interval"]["start"], item["interval"]["end"])
+                mask = col.between(item.get("interval", {}).get("start", -1), item.get("interval", {}).get("end", -1))
                 if mask.any():
-                    trans.append(f"{item['attribute']}_{item['type']}_{item['qualifier']}_{item['interval']['start']}-{item['interval']['end']}")
+                    trans.append(f"{item.get('attribute', '')}_{item.get('type', '')}_{item.get('qualifier', '')}_{item.get('interval', {}).get('start', -1)}-{item.get('interval', {}).get('end', -1)}")
             elif "value" in item:
-                if (col == item["value"]).any():
-                    trans.append(f"{item['attribute']}_{item['type']}_{item['qualifier']}_{item['value']}")
+                if (col.astype(str) == str(item.get("value", ""))).any():
+                    trans.append(f"{item.get('attribute', '')}_{item.get('type', '')}_{item.get('qualifier', '')}_{item.get('value', '')}")
 
         transactions.append(trans)
 
     te = TransactionEncoder()
     te_ary = te.fit(transactions).transform(transactions)
-    return pd.DataFrame(te_ary, columns=te.columns_)
+    col_index = pd.Index(te.columns_, name=None)
+    return pd.DataFrame(te_ary, columns=col_index)
 
 
-def generate_frequent_itemsets(transactions, min_support):
-    return apriori(
-        transactions, min_support=min_support, use_colnames=True
-    ).sort_values("support", ascending=False)
+def generate_frequent_itemsets(transactions: pd.DataFrame, min_support: float) -> pd.DataFrame:
+    """
+    Run the Apriori algorithm to find frequent itemsets.
+
+    Inputs:
+        transactions: one-hot encoded DataFrame
+        min_support: minimum support threshold (0 < min_support <= 1)
+
+    Output:
+        DataFrame sorted by descending support with columns ['itemsets', 'support']
+    """
+    if not 0 < min_support <= 1:
+        raise ValueError("min_support must be between 0 (exclusive) and 1 (inclusive)")
+    return apriori(transactions, min_support=min_support, use_colnames=True).sort_values("support", ascending=False)
 
 
-def generate_association_rules(frequent_itemsets, min_confidence, min_lift):
-    rules = association_rules(
-            frequent_itemsets,
-            metric="confidence",
-            min_threshold=min_confidence
-        )
 
-    rules = rules[rules["lift"] >= min_lift]
+def generate_association_rules(
+    frequent_itemsets: pd.DataFrame, min_confidence: float, min_lift: float
+) -> pd.DataFrame:
+    """
+    Derive association rules from frequent itemsets.
 
-    return rules.sort_values("lift", ascending=False)
+    Inputs:
+        frequent_itemsets – DataFrame from generate_frequent_itemsets()
+        min_confidence    – minimum confidence threshold (0 <= min_confidence <= 1)
+        min_lift          – minimum lift threshold (lift >= min_lift)
+
+    Output:
+        DataFrame of rules sorted by descending lift
+    """
+    if not 0 <= min_confidence <= 1:
+        raise ValueError("min_confidence must be between 0 and 1")
+    if min_lift < 0:
+        raise ValueError("min_lift must be non-negative")
+
+    rules = association_rules(frequent_itemsets, metric="confidence", min_threshold=min_confidence)
+    filtered = rules[rules["lift"] >= min_lift]
+    return pd.DataFrame(filtered).sort_values("lift", ascending=False)
 
 
-def frequent_itemset_to_json(frequent_itemsets):
-    result = []
+def frequent_itemset_to_json(frequent_itemsets: pd.DataFrame) -> List[Dict[str, Any]]:
+    """
+    Serialize frequent itemsets to JSON-compatible format.
+
+    Input:
+        frequent_itemsets – DataFrame with 'itemsets' and 'support'
+
+    Output:
+        [{
+            "item": [{
+                "attribute": str,
+                "type": str // "EVENT" or "OBJECT",
+                "qualifier": str,
+                "value": str,
+            }],
+            "support": float
+        }]
+    """
+    result: List[Dict[str, Any]] = []
     for _, row in frequent_itemsets.iterrows():
         support = float(row["support"])
-        items = list(row["itemsets"])
-        item_objects = []
-
-        for item_str in items:
-            attribute, type, qualifier, value = item_str.split("_")
-            item_objects.append(
-                {
-                    "attribute": attribute,
-                    "type": type,
-                    "qualifier": qualifier,
-                    "value": value,
-                }
-            )
-
-        result.append({"item": item_objects, "support": round(support, 4)})
-
+        items = []
+        for item_str in row["itemsets"]:
+            attr, typ, qual, val = item_str.split("_", 3)
+            items.append({
+                "attribute": attr,
+                "type": typ,
+                "qualifier": qual,
+                "value": val
+            })
+        result.append({"item": items, "support": round(support, 4)})
     return result
 
 
-def association_rule_to_json(association_rules):
-    result = []
+def association_rule_to_json(association_rules_df: pd.DataFrame) -> List[Dict[str, Any]]:
+    """
+    Serialize association rules to JSON-compatible format.
 
-    for _, row in association_rules.iterrows():
-        antecedents = list(row["antecedents"])
-        consequents = list(row["consequents"])
+    Input:
+        association_rules_df – DataFrame with columns:
+            "antecedents": frozenset,
+            "consequents": frozenset,
+            "support",
+            "confidence",
+            "lift"
 
-        ant = []
-        for antecedent in antecedents:
-            attribute, type, qualifier, value = antecedent.split("_")
-            ant.append(
-                {
-                    "attribute": attribute,
-                    "type": type,
-                    "qualifier": qualifier,
-                    "value": value,
-                }
-            )
+    Output:
+        [{
+            "antecedents": [{
+                "attribute": str,
+                "type": str // "EVENT" or "OBJECT",
+                "qualifier": str,
+                "value": str
+            }],
+            "consequents": [{
+                "attribute": str,
+                "type": str // "EVENT" or "OBJECT",
+                "qualifier": str,
+                "value": str
+            }],
+            "support": float,
+            "confidence": float,
+            "lift": float
+        }]
+    """
+    result: List[Dict[str, Any]] = []
+    for _, row in association_rules_df.iterrows():
+        ant_items = []
+        for ante in row["antecedents"]:
+            attr, typ, qual, val = ante.split("_", 3)
+            ant_items.append({
+                "attribute": attr,
+                "type": typ,
+                "qualifier": qual,
+                "value": val
+            })
 
-        con = []
-        for consequent in consequents:
-            attribute, type, qualifier, value = consequent.split("_")
-            con.append(
-                {
-                    "attribute": attribute,
-                    "type": type,
-                    "qualifier": qualifier,
-                    "value": value,
-                }
-            )
+        con_items = []
+        for cons in row["consequents"]:
+            attr, typ, qual, val = cons.split("_", 3)
+            con_items.append({
+                "attribute": attr,
+                "type": typ,
+                "qualifier": qual,
+                "value": val
+            })
 
-        result.append(
-            {
-                "antecedents": ant,
-                "consequents": con,
-                "support": round(float(row["support"]), 4),
-                "confidence": round(float(row["confidence"]), 4),
-                "lift": round(float(row["lift"]), 4),
-            }
-        )
-
+        result.append({
+            "antecedents": ant_items,
+            "consequents": con_items,
+            "support": round(float(row["support"]), 4),
+            "confidence": round(float(row["confidence"]), 4),
+            "lift": round(float(row["lift"]), 4),
+        })
     return result

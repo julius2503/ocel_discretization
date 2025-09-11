@@ -1,7 +1,8 @@
 import json
+import logging
 import os
-import warnings
 
+import pandas as pd
 from flask import (
     Flask,
     flash,
@@ -9,11 +10,12 @@ from flask import (
     redirect,
     render_template,
     request,
+    send_from_directory,
     url_for,
 )
-from pandas.errors import SettingWithCopyWarning
 from werkzeug.utils import secure_filename
 
+from config import ALLOWED_EXTENSIONS, DATA_FOLDER, MAX_CONTENT_LENGTH, UPLOAD_FOLDER
 from src.aggregation import handle_aggregate_attributes
 from src.mining import (
     association_rule_to_json,
@@ -25,225 +27,222 @@ from src.mining import (
 )
 from src.preprocessing import allowed_file, get_attributes, load_ocel, save_ocel
 
-warnings.filterwarnings("ignore", category=UserWarning)
-warnings.filterwarnings("ignore", category=SettingWithCopyWarning)
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-UPLOAD_FOLDER = "uploads"
-DATA_FOLDER = "data"
-ALLOWED_EXTENSIONS = {"json", "sqlite"}
-MAX_CONTENT_LENGTH = 16 * 1024 * 1024
 
 app = Flask(__name__)
-app.config["UPLOAD_FOLDER"] = "uploads"
-app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
-app.secret_key = "key"
+app.config.update(
+    UPLOAD_FOLDER=UPLOAD_FOLDER,
+    MAX_CONTENT_LENGTH=MAX_CONTENT_LENGTH,
+    SECRET_KEY=os.getenv("FLASK_SECRET_KEY", "dev_key"),
+)
 
 os.makedirs(DATA_FOLDER, exist_ok=True)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 @app.template_filter("file_extension")
 def file_extension(filename):
-    return filename.split(".")[1].upper() if "." in filename else ""
+    """Extract uppercase file extension or return empty string."""
+    return filename.rsplit(".", 1)[-1].upper() if "." in filename else ""
 
 
 @app.route("/", methods=["GET", "POST"])
 def upload_file():
-    existing_files = []
-    upload_folder = app.config["UPLOAD_FOLDER"]
-    if os.path.exists(upload_folder):
-        for f in os.listdir(upload_folder):
-            if f.split(".")[1] in ALLOWED_EXTENSIONS:
-                existing_files.append(f)
+    """
+    Display upload form and handle file uploads or selection of existing files.
+    On success, loads OCEL, saves to data/ocel.json, and presents attribute selection.
+    """
+    existing_files = [f for f in os.listdir(UPLOAD_FOLDER) if f.rsplit(".", 1)[-1] in ALLOWED_EXTENSIONS]
 
     if request.method == "POST":
+        # Handle new upload
         if "file" in request.files:
             file = request.files["file"]
-            if not file:
-                raise Exception("No OCEL selected")
-
-            if (
-                file
-                and file.filename
-                and allowed_file(file.filename, str(ALLOWED_EXTENSIONS))
-            ):
+            if not file or file.filename == "":
+                flash("No file selected")
+                return redirect(request.url)
+            if file.filename and allowed_file(file.filename, ALLOWED_EXTENSIONS):
                 filename = secure_filename(file.filename)
-                file_path = os.path.join(upload_folder, filename)
-                file.save(file_path)
-                try:
-                    ocel = load_ocel(file_path)
-                    save_ocel(ocel, f"{DATA_FOLDER}/ocel.json")
-                    attributes = get_attributes(ocel)
-
-                    return render_template(
-                        "select.html", filename=filename, attributes=attributes
-                    )
-                except Exception as e:
-                    flash(f"Fehler: {str(e)}")
-                    return redirect(request.url)
-
+                path = os.path.join(UPLOAD_FOLDER, filename)
+                file.save(path)
+            else:
+                flash("Unsupported file type")
+                return redirect(request.url)
+        # Handle existing file selection
         elif "existing_file" in request.form:
             filename = request.form["existing_file"]
-            file_path = os.path.join(upload_folder, filename)
-            if os.path.exists(file_path):
-                try:
-                    ocel = load_ocel(file_path)
-                    save_ocel(ocel, f"{DATA_FOLDER}/ocel.json")
-                    attributes = get_attributes(ocel)
+            path = os.path.join(UPLOAD_FOLDER, filename)
+            if not os.path.isfile(path):
+                flash("Selected file no longer exists")
+                return redirect(request.url)
+        else:
+            flash("No action specified")
+            return redirect(request.url)
 
-                    return render_template(
-                        "select.html", filename=filename, attributes=attributes
-                    )
-                except Exception as e:
-                    flash(f"Fehler: {str(e)}")
-                    return redirect(request.url)
-            else:
-                flash("Datei existiert nicht mehr")
-
-        return redirect(request.url)
+        try:
+            ocel = load_ocel(path)
+            save_ocel(ocel, os.path.join(DATA_FOLDER, "ocel.json"))
+            attributes = get_attributes(ocel)
+            return render_template("select.html", filename=filename, attributes=attributes)
+        except Exception as e:
+            logger.exception("Failed to load OCEL")
+            flash(f"Error loading file: {e}")
+            return redirect(request.url)
 
     return render_template("index.html", existing_files=existing_files)
 
 
 @app.route("/process", methods=["POST"])
 def process_attributes():
-    data = request.get_json()
-    with open("data/attributes.json", "w") as f:
-        json.dump(data["attributes"], f)
+    """
+    Receives selected and aggregated attributes, applies itemization
+    and saves items.json. Returns JSON redirect to show_items.
+    """
+    data = request.get_json(force=True)
+    attrs = data.get("attributes", [])
 
-    ocel = load_ocel("data/ocel.json")
+    with open(os.path.join(DATA_FOLDER, "attributes.json"), "w") as f:
+        json.dump(attrs, f)
 
     items = []
 
-    for attr in data["attributes"]:
-        if attr["aggregation"] != "":
-            ocel, item = handle_aggregate_attributes(ocel, attr)
-            save_ocel(ocel, "data/ocel.json")
-            items.extend(item)
-        elif attr["selected"]:
+    ocel = load_ocel(os.path.join(DATA_FOLDER, "ocel.json"))
+
+    for attr in attrs:
+        if attr.get("aggregation"):
+            ocel = load_ocel(os.path.join(DATA_FOLDER, "ocel.json"))
+            items.extend(handle_aggregate_attributes(ocel, attr))
+        elif attr.get("selected"):
             items.extend(run_itemize(ocel, attr))
 
-    with open("data/items.json", "w") as f:
+    with open(os.path.join(DATA_FOLDER, "items.json"), "w") as f:
         json.dump(items, f)
 
-    return jsonify({"status": "success", "redirect_url": url_for("show_items")})
+    return jsonify(status="success", redirect_url=url_for("show_items"))
 
 
 @app.route("/items")
 def show_items():
-    with open("data/attributes.json", "r") as f:
-        attributes = json.load(f)
+    """Render the page listing generated items for mining."""
+    with open(os.path.join(DATA_FOLDER, "attributes.json")) as f:
+        attrs = json.load(f)
 
-    with open("data/items.json", "r") as f:
+    with open(os.path.join(DATA_FOLDER, "items.json")) as f:
         items = json.load(f)
-    return render_template(
-        "items.html", items=items, attributes=attributes
-    )
+
+    return render_template("items.html", items=items, attributes=attrs)
 
 
 @app.route("/mine", methods=["POST"])
 def mine():
-    data = request.get_json()
-    ocel = load_ocel("data/ocel.json")
+    """
+    Trigger mining routine: frequent itemsets, association rules,
+    or classification rules based on the selected objective.
+    """
+    data = request.get_json(force=True)
+    objective = data.get("objective", {}).get("name", {})
+    params = data.get("objective", {}).get("parameters", {})
+    ocel = load_ocel(os.path.join(DATA_FOLDER, "ocel.json"))
 
-    with open("data/items.json", "r") as f:
+    with open(os.path.join(DATA_FOLDER, "items.json")) as f:
         items = json.load(f)
 
-    objective = data["objective"]["name"]
-    parameters = data["objective"]["parameters"]
+    transactions = transform_ocel(ocel, items)
+    min_sup = float(params.get("min_sup", 0))
+    frequent_itemsets = generate_frequent_itemsets(transactions, min_sup)
 
-    match objective:
-        case "itemset":
-            transactions = transform_ocel(ocel, items)
-            frequent_itemsets = generate_frequent_itemsets(
-                transactions, float(parameters["min_sup"])
-            )
-            frequent_itemsets = frequent_itemset_to_json(
-                frequent_itemsets
-            )
-            with open("data/itemset.json", "w") as f:
-                json.dump(frequent_itemsets, f)
-            return jsonify(
-                {
-                    "status": "success",
-                    "redirect_url": url_for("show_frequent_itemsets"),
-                }
-            )
+    if objective == "itemset":
+        result = frequent_itemset_to_json(frequent_itemsets)
+        target_file, endpoint = "itemset.json", "show_frequent_itemsets"
+    else:
+        min_conf = float(params.get("min_conf", 0))
+        min_lift = float(params.get("min_lift", 0))
+        rules_df = generate_association_rules(frequent_itemsets, min_conf, min_lift)
+        if objective == "associationrule":
+            result = association_rule_to_json(rules_df)
+            target_file, endpoint = "association_rules.json", "show_association_rules"
+        elif objective == "classificationrule":
+            raw_targets = params.get("target", [])
+            try:
+                target_attrs = {json.loads(t).get("attribute", None) for t in raw_targets}
+            except (TypeError, ValueError, KeyError) as e:
+                return jsonify(status="failed", message=f"Invalid target format: {e}"), 400
+            rules_df = generate_association_rules(frequent_itemsets, min_conf, min_lift)
+            def all_consequents_in_target(consequents: frozenset) -> bool:
+                attrs = {item_str.split("_", 1)[0] for item_str in consequents}
+                return attrs == target_attrs
+            filtered_df = pd.DataFrame(rules_df[rules_df["consequents"].apply(all_consequents_in_target)])
+            result = association_rule_to_json(filtered_df)
+            target_file, endpoint = "classification_rules.json", "show_classification_rules"
+        else:
+            return jsonify(status="failed", message="Unknown mining objective"), 400
 
-        case "associationrule":
-            transactions = transform_ocel(ocel, items)
-            frequent_itemsets = generate_frequent_itemsets(
-                transactions, float(parameters["min_sup"])
-            )
-            association_rules = generate_association_rules(
-                frequent_itemsets, float(parameters["min_conf"]), float(parameters["min_lift"])
-            )
-            association_rules = association_rule_to_json(
-                association_rules
-            )
-            with open("data/association_rules.json", "w") as f:
-                json.dump(association_rules, f)
-            return jsonify(
-                {
-                    "status": "success",
-                    "redirect_url": url_for("show_association_rules"),
-                }
-            )
+    with open(os.path.join(DATA_FOLDER, target_file), "w") as f:
+        json.dump(result, f)
 
-        case "classificationrule":
-            transactions = transform_ocel(ocel, items)
-            frequent_itemsets = generate_frequent_itemsets(
-                transactions, float(parameters["min_sup"])
-            )
-            association_rules = generate_association_rules(
-                frequent_itemsets, float(parameters["min_conf"]), float(parameters["min_lift"])
-            )
-            association_rules = association_rule_to_json(
-                association_rules
-            )
-            rules = []
-            target = json.load(parameters["target"])
-            for rule in association_rules:
-                if (
-                    len(rule["consequents"]) == 1
-                    and rule["consequents"][0]["attribute"] == target["attribute"]
-                ):
-                    rules.append(rule)
-            with open("data/classification_rules.json", "w") as f:
-                json.dump(rules, f)
-            return jsonify(
-                {
-                    "status": "success",
-                    "redirect_url": url_for("show_classification_rules"),
-                }
-            )
-
-    return jsonify(
-        {
-            "status": "failed",
-        }
-    )
+    return jsonify(status="success", redirect_url=url_for(endpoint))
 
 
 @app.route("/itemsets")
 def show_frequent_itemsets():
-    with open("data/itemset.json", "r") as f:
+    """Display mined frequent itemsets."""
+    with open(os.path.join(DATA_FOLDER, "itemset.json")) as f:
         itemsets = json.load(f)
+
     return render_template("frequent_itemsets.html", frequent_itemsets=itemsets)
 
 
 @app.route("/association_rules")
 def show_association_rules():
-    with open("data/association_rules.json", "r") as f:
+    """Display mined association rules."""
+    with open(os.path.join(DATA_FOLDER, "association_rules.json")) as f:
         rules = json.load(f)
+
     return render_template("association_rules.html", rules=rules)
 
 
 @app.route("/classification_rules")
 def show_classification_rules():
-    with open("data/classification_rules.json", "r") as f:
+    """Display mined classification rules."""
+    with open(os.path.join(DATA_FOLDER, "classification_rules.json")) as f:
         rules = json.load(f)
+
     return render_template("classification_rules.html", rules=rules)
 
+@app.route("/download/ocel")
+def download_ocel():
+    """Download the exported OCEL JSON."""
+    ocel = load_ocel(os.path.join(DATA_FOLDER, "ocel.json"))
+    for df in (ocel.events, ocel.objects):
+        temp_cols = [col for col in df.columns if col.startswith("__") and col.endswith("__")]
+        for temp in temp_cols:
+            base = temp.strip("_")
+            df[base] = df[temp]
+            df.drop(columns=[temp], inplace=True)
+
+    save_ocel(ocel, os.path.join(DATA_FOLDER, "export_ocel.json"))
+
+    return send_from_directory(
+        directory=DATA_FOLDER,
+        path="export_ocel.json",
+        as_attachment=True,
+        mimetype="application/json"
+    )
+
+@app.route("/download/pattern/<pattern_name>")
+def download_pattern(pattern_name):
+    """
+    Download a specific pattern JSON (itemset, association_rules, classification_rules).
+    pattern_name should match the basename of the JSON file without extension.
+    """
+    filename = f"{pattern_name}.json"
+    return send_from_directory(
+        directory=DATA_FOLDER,
+        path=filename,
+        as_attachment=True,
+        mimetype="application/json"
+    )
 
 if __name__ == "__main__":
     app.run(debug=True)

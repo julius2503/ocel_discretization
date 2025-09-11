@@ -36,25 +36,13 @@
             <div class="row">
                 <div class="col-md-6 mb-4">
                     <div class="card shadow-sm">
-                        <div class="card-header bg-primary text-white">
-                            Neue OCEL-Datei hochladen
-                        </div>
+                        <div class="card-header bg-primary text-white">Neue OCEL-Datei hochladen</div>
                         <div class="card-body">
                             <form method="post" enctype="multipart/form-data">
                                 <div class="mb-3">
-                                    <input
-                                        class="form-control"
-                                        type="file"
-                                        name="file"
-                                        required
-                                    />
+                                    <input class="form-control" type="file" name="file" required/>
                                 </div>
-                                <button
-                                    type="submit"
-                                    class="btn btn-primary w-100"
-                                >
-                                    Hochladen
-                                </button>
+                                <button type="submit" class="btn btn-primary w-100">Hochladen</button>
                             </form>
                         </div>
                     </div>
@@ -62,21 +50,14 @@
 
                 <div class="col-md-6">
                     <div class="card shadow-sm">
-                        <div class="card-header bg-success text-white">
-                            Vorhandene OCEL-Datei auswählen
-                        </div>
+                        <div class="card-header bg-success text-white">Vorhandene OCEL-Datei auswählen</div>
                         <div class="card-body p-0">
                             {% if existing_files %}
                             <div class="file-list">
                                 <form method="post">
                                     <div class="list-group list-group-flush">
                                         {% for file in existing_files %}
-                                        <button
-                                            type="submit"
-                                            name="existing_file"
-                                            value="{{ file }}"
-                                            class="list-group-item list-group-item-action existing-file-item d-flex justify-content-between align-items-center"
-                                        >
+                                        <button type="submit" name="existing_file" value="{{ file }}" class="list-group-item list-group-item-action existing-file-item d-flex justify-content-between align-items-center">
                                             {{ file }}
                                             <span class="badge bg-secondary">
                                                 {{ file|file_extension }}
@@ -87,9 +68,7 @@
                                 </form>
                             </div>
                             {% else %}
-                            <div class="text-center p-4 text-muted">
-                                Keine vorhandenen Dateien gefunden
-                            </div>
+                            <div class="text-center p-4 text-muted">Keine vorhandenen Dateien gefunden</div>
                             {% endif %}
                         </div>
                     </div>

@@ -1,0 +1,4 @@
+UPLOAD_FOLDER = "uploads"
+DATA_FOLDER = "data"
+ALLOWED_EXTENSIONS = {"json", "sqlite"}
+MAX_CONTENT_LENGTH = 16 * 1024 * 1024
