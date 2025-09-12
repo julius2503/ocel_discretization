@@ -1,17 +1,15 @@
+import copy
 import logging
-import os
-from typing import List
+from typing import List, Tuple
 
 import pandas as pd
 from pm4py import OCEL
 
-from config import DATA_FOLDER
 from src.mining import run_itemize
-from src.preprocessing import save_ocel
 
 logger = logging.getLogger(__name__)
 
-def handle_aggregate_attributes(ocel: OCEL, aggregation_attribute: dict) -> List[dict]:
+def handle_aggregate_attributes(ocel: OCEL, aggregation_attribute: dict) -> Tuple[OCEL, List[dict]]:
     """
     Aggregate an object attribute over related events.
 
@@ -24,6 +22,7 @@ def handle_aggregate_attributes(ocel: OCEL, aggregation_attribute: dict) -> List
         }
 
     Output:
+        OCEL - updated OCEL instance
         Tuple[updated_ocel, items]
         - updated_ocel: deep-copied OCEL with new aggregated column on events
         - items: item definitions for subsequent mining
@@ -45,11 +44,10 @@ def handle_aggregate_attributes(ocel: OCEL, aggregation_attribute: dict) -> List
     )
     grouped[column_name] = grouped[column_name].round(2)
 
-    ocel.events = ocel.events.merge(grouped, on="ocel:eid", how="left")
+    updated_ocel = copy.deepcopy(ocel)
+    updated_ocel.events = ocel.events.merge(grouped, on="ocel:eid", how="left")
 
     aggregation_attribute.update(attribute=column_name)
 
-    items = run_itemize(ocel, aggregation_attribute)
-
-    save_ocel(ocel, os.path.join(DATA_FOLDER, "ocel.json"))
-    return items
+    items = run_itemize(updated_ocel, aggregation_attribute)
+    return updated_ocel, items

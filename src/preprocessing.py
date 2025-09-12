@@ -213,7 +213,12 @@ def split_numerical_attribute(ocel: OCEL, type: str, splits: List[Dict[str, Any]
             if val is None:
                 continue
             if split.get("type", "") == "EVENT":
-                df = pd.DataFrame(df[df[split.get("attribute", "")].astype(str) == val])
+                if not split.get("agg"):
+                    df = pd.DataFrame(df[df[split.get("attribute", "")].astype(str) == val])
+                else:
+                    start, end = val.split(", ")
+                    start, end = float(start.strip("[")), float(end.strip("]"))
+                    df = pd.DataFrame(df[df[split.get("attribute", "")].astype(float).between(start, end)])
             else:
                 oids = ocel.objects[
                     (ocel.objects["ocel:type"] == split.get("qualifier", "")) &

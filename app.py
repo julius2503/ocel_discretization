@@ -112,14 +112,63 @@ def process_attributes():
     for attr in attrs:
         if attr.get("aggregation"):
             ocel = load_ocel(os.path.join(DATA_FOLDER, "ocel.json"))
-            items.extend(handle_aggregate_attributes(ocel, attr))
-        elif attr.get("selected"):
+            ocel, new_items = handle_aggregate_attributes(ocel, attr)
+            items.extend(new_items)
+            save_ocel(ocel, os.path.join(DATA_FOLDER, "ocel.json"))
+
+    for attr in attrs:
+        if attr.get("selected") and not attr.get("aggregation"):
             items.extend(run_itemize(ocel, attr))
 
     with open(os.path.join(DATA_FOLDER, "items.json"), "w") as f:
         json.dump(items, f)
 
     return jsonify(status="success", redirect_url=url_for("show_items"))
+
+
+@app.route("/aggregate", methods=["POST"])
+def handle_aggregation():
+    """
+    Handle individual attribute aggregation and return discretization intervals.
+    This endpoint performs aggregation and returns the intervals without page refresh.
+    """
+    data = request.get_json(force=True)
+    attr = data.get("attribute", {})
+    attribute_name = attr.get("attribute", {})
+    agg_func = attr.get("aggregation", "")
+
+    if not agg_func:
+        return jsonify(status="failed", message="No aggregation specified"), 400
+
+    try:
+        ocel = load_ocel(os.path.join(DATA_FOLDER, "ocel.json"))
+        _, items = handle_aggregate_attributes(ocel, attr)
+
+        intervals = []
+
+        for item in items:
+            start = item.get("interval", "").get("start", -1)
+            end = item.get("interval", "").get("end", -1)
+            intervals.append(f"[{start}, {end}]")
+
+        aggregated_attr = {
+            "attribute": attr.get("attribute", ""),
+            "original_attribute": attribute_name,
+            "type": attr.get("type", ""),
+            "qualifier": attr.get("qualifier", ""),
+            "vals": [{"value": str(interval)} for interval in intervals],
+            "aggregation": attr.get("aggregation", "")
+        }
+
+        return jsonify(
+            status="success",
+            aggregated_attribute=aggregated_attr,
+            message=f"Aggregation completed for {attr['attribute']}"
+        )
+
+    except Exception as e:
+        logger.exception("Failed to perform aggregation")
+        return jsonify(status="failed", message=f"Aggregation failed: {str(e)}"), 500
 
 
 @app.route("/items")

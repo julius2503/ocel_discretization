@@ -4,10 +4,9 @@
         <meta charset="UTF-8" />
         <title>OCEL-Attribute</title>
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
-        <script src="https://unpkg.com/htmx.org@2.0.4" integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+" crossorigin="anonymous"></script>
-        <script src="https://unpkg.com/htmx.org/dist/ext/json-enc.js"></script>
+        <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+        <script src="https://unpkg.com/htmx.org@2.0.4/dist/ext/json-enc.js"></script>
         <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-        <script src="https://cdn.jsdelivr.net/gh/alexpechkarev/alpinejs-multiselect@main/dist/alpine-multiselect.min.js"></script>
     </head>
     <body>
         <div class="container my-5">
@@ -128,6 +127,51 @@
                     </div>
                 </div>
 
+                <div class="card mb-4 shadow border-primary border-2">
+                    <div class="card-header bg-primary bg-opacity-75 text-white">
+                        <strong>
+                            <i class="bi bi-hash"></i>
+                            Objekt-Aggregation
+                        </strong>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Attribut</th>
+                                    <th>Typ</th>
+                                    <th>Qualifier</th>
+                                    <th>Aggregate</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="(attr, idx) in data.attributes.filter(a => a.type==='OBJECT' && a.numeric)" :key="idx">
+                                  <tr>
+                                    <td x-text="attr.attribute"></td>
+                                    <td x-text="attr.type"></td>
+                                    <td x-text="attr.qualifier"></td>
+                                    <td>
+                                        <select
+                                          x-model="attr.aggregation"
+                                          class="form-select form-select-sm"
+                                          @change="onAggregationChange(data.attributes, attr)"
+                                        >
+                                        <option value="">Keine</option>
+                                        <option value="sum">Summe</option>
+                                        <option value="mean">Durchschnitt</option>
+                                        <option value="median">Median</option>
+                                        <option value="min">Minimum</option>
+                                        <option value="max">Maximum</option>
+                                        <option value="count">Anzahl</option>
+                                      </select>
+                                    </td>
+                                  </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <template x-for="(attr, idx) in data.attributes.filter(a => a.numeric)" :key="'numeric-card-' + idx" x-init="attr.algorithm.parameters = JSON.parse(JSON.stringify(defaultParameters[attr.algorithm.name]))">
                     <div class="card mb-4 shadow border-primary border-2">
                         <div class="card-header bg-primary bg-opacity-75 text-white">
@@ -209,7 +253,8 @@
                                                                 attribute: rel.attribute,
                                                                 type: rel.type,
                                                                 qualifier: rel.qualifier,
-                                                                selected_value: null
+                                                                selected_value: null,
+                                                                agg: rel.agg
                                                             });
                                                         } else {
                                                             attr.split_attributes = attr.split_attributes.filter(
@@ -243,53 +288,66 @@
                     </div>
                 </template>
 
-                <div class="card mb-4 shadow border-primary border-2">
-                    <div class="card-header bg-primary bg-opacity-75 text-white">
-                        <strong>
-                            <i class="bi bi-hash"></i>
-                            Objekt-Aggregation
-                            <span x-text="attr.attribute"></span>
-                        </strong>
-                    </div>
-                    <div class="table-responsive">
-                        <table class="table table-sm table-bordered mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Attribut</th>
-                                    <th>Typ</th>
-                                    <th>Qualifier</th>
-                                    <th>Aggregate</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <template x-for="(attr, idx) in data.attributes.filter(a => a.type==='OBJECT' && a.numeric)" :key="idx">
-                                  <tr>
-                                    <td x-text="attr.attribute"></td>
-                                    <td x-text="attr.type"></td>
-                                    <td x-text="attr.qualifier"></td>
-                                    <td>
-                                      <select class="form-select form-select-sm" x-model="attr.aggregation">
-                                        <option value="">Keine</option>
-                                        <option value="sum">Summe</option>
-                                        <option value="mean">Durchschnitt</option>
-                                        <option value="median">Median</option>
-                                        <option value="min">Minimum</option>
-                                        <option value="max">Maximum</option>
-                                        <option value="count">Anzahl</option>
-                                      </select>
-                                    </td>
-                                  </tr>
-                                </template>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
                 <button type="submit" class="btn btn-primary mt-4">Diskretisierung starten</button>
             </form>
         </div>
     </body>
     <script>
+      function onAggregationChange(data, attr) {
+        console.log(data)
+        console.log(attr)
+
+        const attrsToRemove = new Set();
+        data.forEach(a => {
+          a.related.forEach(r => {
+            if (r.agg) {
+              attrsToRemove.add(r.attribute);
+            }
+          });
+        });
+
+        data.forEach(a => {
+          a.related = a.related.filter(r => !attrsToRemove.has(r.attribute));
+          a.split_attributes = a.split_attributes.filter(s =>
+            !attrsToRemove.has(s.attribute)
+          );
+        });
+
+        if (!attr.aggregation) {
+           return;
+         }
+
+          fetch('/aggregate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ attribute: attr })
+          })
+          .then(res => res.json())
+          .then(json => {
+            const resAttr = json.aggregated_attribute;
+            console.log(resAttr.vals)
+            data.forEach(a => {
+              a.related.forEach(r => {
+                if (
+                  r.attribute === resAttr.original_attribute &&
+                  r.type == resAttr.type &&
+                  r.qualifier === resAttr.qualifier
+                ) {
+                  a.related.push({
+                    attribute: resAttr.attribute,
+                    type: "EVENT",
+                    qualifier: resAttr.qualifier,
+                    vals: resAttr.vals,
+                    agg: true,
+                    selected: false
+                  });
+                }
+              });
+            });
+          })
+          .catch(err => console.error('Aggregation fehlgeschlagen:', err));
+        }
+
         document.addEventListener("DOMContentLoaded", function () {
             document
                 .querySelectorAll(".table tbody tr")
