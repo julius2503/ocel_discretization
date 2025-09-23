@@ -24,7 +24,7 @@
                         'equal-freq': { bins: 5 },
                         'equal-width': { bins: 5 },
                         'chi-merge': { labels: [], max_interval: 5, significance: 0.05 },
-                        'k-means': { clusters: 3}
+                        'k-means': { clusters: 3, labels: []}
                     },
                     data: {
                         attributes: [
@@ -233,6 +233,14 @@
                                                 <div class="mb-3">
                                                     <label class="form-label">Cluster:</label>
                                                     <input type="number" class="form-control" min="2" x-model="attr.algorithm.parameters.clusters"/>
+                                                </div>
+                                                <div class="mb-3">
+                                                    <label class="form-label">Labels (Dimensionen):</label>
+                                                    <select class="form-select" multiple x-model="attr.algorithm.parameters.labels" x-multiselect :size="attr.related.length" style="height: auto;">
+                                                        <template x-for="attr in attr.related">
+                                                            <option :value="JSON.stringify({ attribute: attr.attribute, type: attr.type, qualifier: attr.qualifier })" x-text="attr.attribute + '-' + attr.type + '-' + attr.qualifier"></option>
+                                                        </template>
+                                                    </select>
                                                 </div>
                                             </div>
                                         </template>

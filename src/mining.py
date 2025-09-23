@@ -35,7 +35,8 @@ def run_itemize(ocel: OCEL, attribute: Dict[str, Any]) -> List[Dict]:
             "interval": {
                 "start": float,
                 "end": float
-            } // for discretized attributes
+            } // for discretized attributes,
+            "mapping": [str] // eids/oids for this item
         }]
 
     """
@@ -64,9 +65,15 @@ def run_itemize(ocel: OCEL, attribute: Dict[str, Any]) -> List[Dict]:
         else:
             raise ValueError(f"Unknown type for numeric attribute: {type}")
 
-        intervals = run_discretization(ocel, attribute, values, ids)
+        intervals, id_to_cluster = run_discretization(ocel, attribute, values, ids)
         if not aggregation:
-            _apply_intervals_to_ocel(attribute, intervals)
+            _apply_intervals_to_ocel(attribute, intervals, id_to_cluster)
+
+        cluster_to_ids: dict[int, list[Any]] = {}
+        if id_to_cluster:
+            for eid, cid in id_to_cluster.items():
+                cluster_to_ids.setdefault(cid, []).append(eid)
+
 
         return [
             {
@@ -75,8 +82,9 @@ def run_itemize(ocel: OCEL, attribute: Dict[str, Any]) -> List[Dict]:
                 "qualifier": qualifier,
                 "interval": {"start": start, "end": end},
                 "aggregate": aggregation,
+                "mapping": cluster_to_ids.get(idx, [])
             }
-            for start, end in intervals
+            for idx, (start, end) in enumerate(intervals)
         ]
 
     if type == "EVENT":
@@ -98,7 +106,8 @@ def run_itemize(ocel: OCEL, attribute: Dict[str, Any]) -> List[Dict]:
 
 def _apply_intervals_to_ocel(
     attribute: Dict[str, Any],
-    intervals: List[Tuple[float, float]]
+    intervals: List[Tuple[float, float]],
+    id_to_cluster: Dict[Any, int] | None
 ) -> None:
     """
     Saves a new OCEL where the numeric values of one attribute have been
@@ -129,19 +138,32 @@ def _apply_intervals_to_ocel(
 
     if type == "EVENT":
         df = ocel.events
+        id_col = "ocel:eid"
         base_mask = df["ocel:activity"] == qualifier
     else:
         df = ocel.objects
+        id_col = "ocel:oid"
         base_mask = df["ocel:type"] == qualifier
 
     df[attr].astype(float)
     temp_col = f"__{attr}__"
     df[temp_col] = None
 
-    for start, end in intervals:
-        label = f"[{start}-{end}]"
-        mask = base_mask & df[attr].between(start, end)
-        df.loc[mask, temp_col] = label
+    interval_labels = [f"[{start}-{end}]" for start, end in intervals]
+
+    if id_to_cluster:
+        def map_interval_by_id(eid):
+            cid = id_to_cluster.get(eid)
+            if cid is None or cid < 0 or cid >= len(interval_labels):
+                return None
+            return interval_labels[cid]
+
+        df.loc[base_mask, temp_col] = df.loc[base_mask, id_col].map(map_interval_by_id)
+    else:
+        for idx, (start, end) in enumerate(intervals):
+            label = interval_labels[idx]
+            mask = base_mask & df[attr].between(start, end, inclusive="both")
+            df.loc[mask, temp_col] = label
 
     save_ocel(ocel, os.path.join(DATA_FOLDER, "ocel.json"))
 
@@ -161,6 +183,7 @@ def transform_ocel(ocel: OCEL, items: List[Dict[str, Any]]) -> pd.DataFrame:
                 "start": float,
                 "end": float
             } // for discretized attributes
+            "mapping": [str] // eids/oids for this item
         }]
 
     Output:
@@ -183,7 +206,14 @@ def transform_ocel(ocel: OCEL, items: List[Dict[str, Any]]) -> pd.DataFrame:
             if item.get("qualifier", "") not in ev_df["ocel:activity"].values:
                 continue
 
+            mapping = item.get("mapping")
+            if mapping is not None:
+                if eid in mapping:
+                    trans.append(f"{item.get('attribute', '')}_{item.get('type', '')}_{item.get('qualifier', '')}_{item.get('interval', {}).get('start', -1)}-{item.get('interval', {}).get('end', -1)}")
+                continue
+
             col = ev_df[item.get("attribute", "")]
+
             if "interval" in item:
                 mask = col.between(item.get("interval", {}).get("start", -1), item.get("interval", {}).get("end", -1))
                 if mask.any():
@@ -194,6 +224,12 @@ def transform_ocel(ocel: OCEL, items: List[Dict[str, Any]]) -> pd.DataFrame:
 
         for item in object_items:
             if item.get("qualifier", '') not in pd.DataFrame(obj_df["ocel:type"]).values:
+                continue
+
+            mapping = item.get("mapping")
+            if mapping is not None:
+                if eid in mapping:
+                    trans.append(f"{item.get('attribute', '')}_{item.get('type', '')}_{item.get('qualifier', '')}_{item.get('interval', {}).get('start', -1)}-{item.get('interval', {}).get('end', -1)}")
                 continue
 
             if item.get("aggregate", None):
