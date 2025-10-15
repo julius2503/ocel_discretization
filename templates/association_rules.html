@@ -1,238 +1,95 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
     <head>
         <meta charset="UTF-8" />
-        <title>Association Rules</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
-        <script src="https://unpkg.com/htmx.org@2.0.4" integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+" crossorigin="anonymous"></script>
-        <script src="https://unpkg.com/htmx.org/dist/ext/json-enc.js"></script>
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css"/>
-        <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-        <style>
-            .rule-card {
-                margin-bottom: 2rem;
-                border-radius: 12px;
-                box-shadow:
-                    0 4px 16px 0 rgba(0, 0, 0, 0.1),
-                    0 1.5px 6px 0 rgba(0, 0, 0, 0.08);
-                padding: 1.5rem 1.5rem 1rem 1.5rem;
-                background: #fff;
-            }
-            .rule-table th,
-            .rule-table td {
-                text-align: center;
-                vertical-align: middle;
-            }
-            .rule-title {
-                font-size: 1.2rem;
-                font-weight: 600;
-                margin-bottom: 0.5rem;
-            }
-            .badge-rank {
-                background: #e3f2fd;
-                color: #1565c0;
-                font-size: 1em;
-            }
-            .metrics-container {
-                display: flex;
-                flex-direction: column;
-                gap: 0.3rem;
-                align-items: center;
-                justify-content: center;
-            }
-            .metric-badge {
-                padding: 0.2em 0.6em;
-                border-radius: 8px;
-                font-size: 0.8em;
-                font-weight: 600;
-                min-width: 60px;
-                text-align: center;
-            }
-            .metric-support {
-                background-color: #d1ecf1;
-                color: #0c5460;
-            }
-            .metric-confidence {
-                background-color: #d4edda;
-                color: #155724;
-            }
-            .metric-lift {
-                background-color: #f8d7da;
-                color: #721c24;
-            }
-            .metric-lift.good {
-                background-color: #fff3cd;
-                color: #856404;
-            }
-            .rule-arrow {
-                font-size: 1.5em;
-                color: #007bff;
-                font-weight: bold;
-            }
-            .attribute-item {
-                background: #f8f9fa;
-                color: #495057;
-                padding: 0.3em 0.6em;
-                border-radius: 8px;
-                font-size: 0.85em;
-                display: inline-block;
-                margin: 0.1em;
-                word-break: break-word;
-            }
-            .attribute-item.event {
-                background: #e3f2fd;
-                color: #1565c0;
-            }
-            .attribute-item.object {
-                background: #9bdad6;
-                color: #065084;
-            }
-            .rule-side {
-                min-width: 200px;
-                max-width: 400px;
-            }
-            .stats-card {
-                background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-                color: white;
-                border-radius: 12px;
-                padding: 1.5rem;
-                margin-bottom: 2rem;
-            }
-            .stat-item {
-                text-align: center;
-            }
-            .stat-number {
-                font-size: 2rem;
-                font-weight: bold;
-                margin-bottom: 0.5rem;
-            }
-            .stat-label {
-                font-size: 0.9rem;
-                opacity: 0.9;
-            }
-            .confidence-bar {
-                width: 100%;
-                height: 6px;
-                background-color: #e9ecef;
-                border-radius: 3px;
-                overflow: hidden;
-                margin-top: 0.3rem;
-            }
-            .confidence-fill {
-                height: 100%;
-                background: linear-gradient(90deg, #28a745, #20c997);
-                border-radius: 3px;
-                transition: width 0.3s ease;
-            }
-            .support-bar {
-                width: 100%;
-                height: 8px;
-                background-color: #e9ecef;
-                border-radius: 4px;
-                overflow: hidden;
-                margin-top: 0.5rem;
-            }
-            .support-fill {
-                height: 100%;
-                background: linear-gradient(90deg, #007bff, #0056b3);
-                border-radius: 4px;
-                transition: width 0.3s ease;
-            }
-            .lift-indicator {
-                font-size: 0.75em;
-                margin-top: 0.2em;
-            }
-            .no-data {
-                text-align: center;
-                padding: 3rem;
-                color: #6c757d;
-            }
-            #scrollToTopBtn {
-                display: none;
-                position: fixed;
-                bottom: 30px;
-                right: 30px;
-                z-index: 99;
-                border: none;
-                outline: none;
-                background-color: #555;
-                color: white;
-                cursor: pointer;
-                padding: 0;
-                width: 50px;
-                height: 50px;
-                border-radius: 50%;
-                font-size: 22px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-                transition: background-color 0.2s;
-            }
-            #scrollToTopBtn:hover {
-                background-color: #333;
-            }
-        </style>
+        <title>Association Rules</title>
+
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet" />
+        <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
+
+        <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
+        <script src="https://unpkg.com/htmx.org@2.0.4/dist/ext/json-enc.js" defer></script>
+
+        <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+
+        <script type="application/json" id="initial-pattern">
+            {{ rules | tojson }}
+        </script>
+        <script src="{{ url_for('static', filename='js/scripts.js') }}"></script>
     </head>
     <body>
         <div class="container my-5 d-flex justify-content-between align-items-center">
             <div>
-                <a href="{{ url_for('show_items') }}" class="btn btn-secondary me-3">Zurück zu Items</a>
-                <a href="{{ url_for('upload_file') }}" class="btn btn-secondary">Neue Analyse starten</a>
+                <a href="{{ url_for('show_items') }}" class="btn btn-secondary me-3">Back To Items</a>
+                <a href="{{ url_for('upload_file') }}" class="btn btn-secondary">Start New Analysis</a>
             </div>
             <div>
                 <a href="{{ url_for('download_ocel') }}" class="btn btn-success me-3">
-                    <i class="bi bi-download"></i> OCEL
+                    <i class="bi bi-download"></i>
+                    Download OCEL
                 </a>
                 <a href="{{ url_for('download_pattern', pattern_name='association_rules') }}" class="btn btn-success">
-                    <i class="bi bi-download"></i> RULES
+                    <i class="bi bi-download"></i>
+                    Download RULES
                 </a>
             </div>
         </div>
 
-
-        <div class="container my-5">
+        <div class="container my-5" x-data="ruleFilter()">
             {% if rules %}
             <h1 class="mb-4 text-center">Association Rules</h1>
 
+            <div class="mb-4 text-center d-flex justify-content-center align-items-center">
+                <input x-model="inputDsl" type="text" class="form-control w-75 me-2" placeholder="AND(Antecedent(OnTime:True),Support(0.02:1))" @keydown.enter="applyFilter()" />
+                <button class="btn btn-primary me-2" @click="dsl = inputDsl">
+                    <i class="bi bi-search"></i>
+                    Filter
+                </button>
+                <button class="btn btn-secondary" @click="resetFilter()">
+                    <i class="bi bi-arrow-repeat"></i>
+                    Reset
+                </button>
+            </div>
+
             <div class="stats-card d-flex justify-content-between flex-wrap">
-                <div class="stat-item text-center">
-                    <div class="stat-number">{{ rules|length }}</div>
-                    <div class="stat-label">Association Rules</div>
+                <div class="stat-item">
+                    <div class="stat-number" x-text="filteredRules.length"></div>
+                    <div class="stat-label">Number of Rules</div>
                 </div>
-                <div class="stat-item text-center">
-                    <div class="stat-number">{{ "%.3f"|format(rules|map(attribute='support')|sum / rules|length) }}</div>
-                    <div class="stat-label">Durchschnittlicher Support</div>
+                <div class="stat-item">
+                    <div class="stat-number" x-text="(filteredRules.reduce((s,r)=>s+r.support,0)/(filteredRules.length||1)).toFixed(3)"></div>
+                    <div class="stat-label">Average Support</div>
                 </div>
-                <div class="stat-item text-center">
-                    <div class="stat-number">{{ "%.3f"|format(rules|map(attribute='support')|max) }}</div>
-                    <div class="stat-label">Höchster Support</div>
+                <div class="stat-item">
+                    <div class="stat-number" x-text="filteredRules.length?Math.max(...filteredRules.map(r=>r.support)).toFixed(3):'0.000'"></div>
+                    <div class="stat-label">Highest Support</div>
                 </div>
-                <div class="stat-item text-center">
-                    <div class="stat-number">{{ "%.3f"|format(rules|map(attribute='confidence')|sum / rules|length) }}</div>
-                    <div class="stat-label">Durchschnittliche Confidence</div>
+                <div class="stat-item">
+                    <div class="stat-number" x-text="(filteredRules.reduce((s,r)=>s+r.confidence,0)/(filteredRules.length||1)).toFixed(3)"></div>
+                    <div class="stat-label">Average Confidence</div>
                 </div>
-                <div class="stat-item text-center">
-                    <div class="stat-number">{{ "%.3f"|format(rules|map(attribute='confidence')|max) }}</div>
-                    <div class="stat-label">Höchste Confidence</div>
+                <div class="stat-item">
+                    <div class="stat-number" x-text="filteredRules.length?Math.max(...filteredRules.map(r=>r.confidence)).toFixed(3):'0.000'"></div>
+                    <div class="stat-label">Highest Confidence</div>
                 </div>
-                <div class="stat-item text-center">
-                    <div class="stat-number">{{ "%.3f"|format(rules|map(attribute='lift')|sum / rules|length) }}</div>
-                    <div class="stat-label">Durchschnittlicher Lift</div>
+                <div class="stat-item">
+                    <div class="stat-number" x-text="(filteredRules.reduce((s,r)=>s+r.lift,0)/(filteredRules.length||1)).toFixed(3)"></div>
+                    <div class="stat-label">Average Lift</div>
                 </div>
-                <div class="stat-item text-center">
-                    <div class="stat-number">{{ "%.3f"|format(rules|map(attribute='lift')|max) }}</div>
-                    <div class="stat-label">Höchster Lift</div>
+                <div class="stat-item">
+                    <div class="stat-number" x-text="filteredRules.length?Math.max(...filteredRules.map(r=>r.lift)).toFixed(3):'0.000'"></div>
+                    <div class="stat-label">Highest Lift</div>
                 </div>
             </div>
 
             <div class="rule-card">
                 <div class="table-responsive">
-                    <table class="table rule-table table-bordered align-middle">
+                    <table class="table rule-table table-bordered">
                         <thead class="table-light">
                             <tr>
-                                <th>Rang</th>
+                                <th>Rank</th>
                                 <th>Antecedents</th>
                                 <th></th>
                                 <th>Consequents</th>
@@ -242,101 +99,72 @@
                             </tr>
                         </thead>
                         <tbody>
-                            {% for rule in rules %}
-                            <tr>
-                                <td>
-                                    <span class="badge badge-rank {% if loop.index <= 3 %}top-3{% endif %}">{{ loop.index }}</span>
-                                </td>
-                                <td class="rule-side">
-                                    <div class="d-flex flex-wrap gap-1 justify-content-center">
-                                        {% for item in rule.antecedents %}
-                                        <span class="attribute-item {% if item.type == 'EVENT' %}event{% else %}object{% endif %}">
-                                            <strong>{{ item.attribute }}</strong>: {{ item.value }} <br /><small>{{ item.type }} ({{item.qualifier }})</small>
-                                        </span>
-                                        {% endfor %}
-                                    </div>
-                                </td>
-                                <td>
-                                    <span class="rule-arrow">→</span>
-                                </td>
-                                <td>
-                                    <div class="d-flex flex-wrap gap-1 justify-content-center">
-                                        {% for item in rule.consequents %}
-                                        <span class="attribute-item {% if item.type == 'EVENT' %}event{% else %}object{% endif %}">
-                                            <strong>{{ item.attribute }}</strong>: {{ item.value }} <br /><small>{{ item.type }} ({{item.qualifier }})</small>
-                                        </span>
-                                        {% endfor %}
-                                    </div>
-                                </td>
-                                <td>
-                                    <span class="metric-badge metric-support">{{ "%.3f"|format(rule.support) }}</span>
-                                    <small class="text-muted">{{ "%.1f"|format(rule.support * 100)}}%</small>
-                                    <div class="confidence-bar">
-                                        <div class="support-fill" style="width: {{ (rule.support * 100)|round(1) }}%"></div>
-                                    </div>
-                                </td>
-                                <td>
-                                    <span class="metric-badge metric-confidence">{{ "%.3f"|format(rule.confidence)}}</span>
-                                    <small class="text-muted">{{ "%.1f"|format(rule.confidence * 100)}}%</small>
-                                    <div class="confidence-bar">
-                                        <div class="confidence-fill" style="width: {{ (rule.confidence * 100)|round(1) }}%"></div>
-                                    </div>
-                                </td>
-                                <td>
-                                    <span class="metric-badge metric-lift {% if rule.lift > 1.0 %}good{% endif %}">{{ "%.3f"|format(rule.lift) }}</span>
-                                </td>
-                            </tr>
-                            {% endfor %}
+                            <template x-for="(rule,index) in filteredRules" :key="index">
+                                <tr>
+                                    <td>
+                                        <span class="badge badge-rank" :class="{'top-3': index<3}" x-text="index+1"></span>
+                                    </td>
+                                    <td class="rule-side">
+                                        <div class="d-flex flex-wrap gap-1 justify-content-center">
+                                            <template x-for="item in rule.antecedents" :key="item.attribute+item.value">
+                                                <span :class="['attribute-item', item.type=='EVENT'?'event':'object']">
+                                                    <strong x-text="item.attribute"></strong>
+                                                    :
+                                                    <span x-text="item.value"></span>
+                                                    <br />
+                                                    <small x-text="item.type+' ('+item.qualifier+')'"></small>
+                                                </span>
+                                            </template>
+                                        </div>
+                                    </td>
+                                    <td><span class="rule-arrow">→</span></td>
+                                    <td>
+                                        <div class="d-flex flex-wrap gap-1 justify-content-center">
+                                            <template x-for="item in rule.consequents" :key="item.attribute+item.value">
+                                                <span :class="['attribute-item', item.type=='EVENT'?'event':'object']">
+                                                    <strong x-text="item.attribute"></strong>
+                                                    :
+                                                    <span x-text="item.value"></span>
+                                                    <br />
+                                                    <small x-text="item.type+' ('+item.qualifier+')'"></small>
+                                                </span>
+                                            </template>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="metric-badge metric-support" x-text="rule.support.toFixed(3)"></span>
+                                        <small class="text-muted" x-text="(rule.support*100).toFixed(1)+'%'"></small>
+                                        <div class="support-bar">
+                                            <div class="support-fill" :style="`width:${(rule.support*100).toFixed(1)}%`"></div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="metric-badge metric-confidence" x-text="rule.confidence.toFixed(3)"></span>
+                                        <small class="text-muted" x-text="(rule.confidence*100).toFixed(1)+'%'"></small>
+                                        <div class="confidence-bar">
+                                            <div class="confidence-fill" :style="`width:${(rule.confidence*100).toFixed(1)}%`"></div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="metric-badge metric-lift" :class="{'good': rule.lift>1}" x-text="rule.lift.toFixed(3)"></span>
+                                    </td>
+                                </tr>
+                            </template>
                         </tbody>
                     </table>
                 </div>
             </div>
-
             {% else %}
             <div class="rule-card">
                 <div class="no-data">
-                    <h3>Keine Association Rules gefunden</h3>
-                    <p>Es wurden keine Association Rules mit den aktuellen Parametern gefunden.</p>
-                    <a href="{{ url_for('show_items') }}" class="btn btn-primary">Zurück zu Items</a>
+                    <h3>No Association Rules found!</h3>
+                    <p>Unable to identify any association rules with current parameters.</p>
+                    <a href="{{ url_for('show_items') }}" class="btn btn-primary">Back To Items</a>
                 </div>
             </div>
             {% endif %}
         </div>
 
-        <button id="scrollToTopBtn" title="Nach oben scrollen">↑</button>
-
-        <script>
-            window.onscroll = function () {
-                const btn = document.getElementById("scrollToTopBtn");
-                if (
-                    document.body.scrollTop > 20 ||
-                    document.documentElement.scrollTop > 20
-                ) {
-                    btn.style.display = "block";
-                } else {
-                    btn.style.display = "none";
-                }
-            };
-
-            document.getElementById("scrollToTopBtn").onclick = function () {
-                window.scrollTo({
-                    top: 0,
-                    behavior: "smooth",
-                });
-            };
-
-            // Animate confidence bars on page load
-            document.addEventListener("DOMContentLoaded", function () {
-                const confidenceBars =
-                    document.querySelectorAll(".confidence-fill");
-                confidenceBars.forEach((bar) => {
-                    const width = bar.style.width;
-                    bar.style.width = "0%";
-                    setTimeout(() => {
-                        bar.style.width = width;
-                    }, 100);
-                });
-            });
-        </script>
+        <button id="scrollToTopBtn" title="Scroll to top">↑</button>
     </body>
 </html>

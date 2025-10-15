@@ -1,0 +1,190 @@
+/* static/css/styles.css */
+
+/* ====== Shared Layout ====== */
+.container.my-5 {
+    margin-top: 3rem;
+    margin-bottom: 3rem;
+}
+.d-flex.justify-content-between.align-items-center {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.table-responsive {
+    overflow-x: auto;
+}
+.btn + .btn {
+    margin-left: 0.5rem;
+}
+
+/* ====== Card Styles ====== */
+.card-base,
+.rule-card,
+.itemset-card,
+.attribute-card,
+.stats-card {
+    border-radius: 12px;
+    background: #fff;
+    box-shadow:
+        0 4px 16px rgba(0, 0, 0, 0.1),
+        0 1.5px 6px rgba(0, 0, 0, 0.08);
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+.stats-card {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    color: #fff;
+}
+
+/* ====== Tables ====== */
+.rule-table th,
+.rule-table td,
+.itemset-table th,
+.itemset-table td,
+.items-table th,
+.items-table td,
+.interval-table th,
+.interval-table td {
+    text-align: center;
+    vertical-align: middle;
+}
+
+/* ====== Badges & Labels ====== */
+.badge-rank,
+.badge-interval {
+    background: #e3f2fd;
+    color: #1565c0;
+    font-size: 1em;
+}
+.top-3 {
+    font-weight: bold;
+}
+.stat-item .stat-number {
+    font-size: 2rem;
+    font-weight: bold;
+}
+.stat-item .stat-label {
+    font-size: 0.9rem;
+    opacity: 0.9;
+}
+.attribute-title,
+.interval-title {
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+/* ====== Metric Bars ====== */
+.support-container,
+.metrics-container,
+.interval-value-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+}
+.support-badge,
+.metric-badge,
+.value-pill,
+.intervall-pill {
+    padding: 0.25em 0.8em;
+    border-radius: 12px;
+    font-size: 0.9em;
+    display: inline-block;
+    margin-top: 0.5rem;
+    font-weight: 600;
+}
+.support-badge,
+.metric-support {
+    background: #d1ecf1;
+    color: #0c5460;
+}
+.metric-confidence {
+    background: #d4edda;
+    color: #155724;
+}
+.metric-lift {
+    background: #f8d7da;
+    color: #721c24;
+}
+.metric-lift.good {
+    background: #fff3cd;
+    color: #856404;
+}
+.intervall-pill {
+    background-color: #13678a;
+    color: #d1ecf1;
+}
+.value-pill {
+    background-color: #d1ecf1;
+    color: #0c5460;
+}
+.support-bar,
+.confidence-bar {
+    width: 100%;
+    background: #e9ecef;
+    border-radius: 4px;
+    overflow: hidden;
+}
+.support-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #007bff, #0056b3);
+    transition: width 0.3s ease;
+}
+.confidence-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #28a745, #20c997);
+    transition: width 0.3s ease;
+}
+
+/* ====== Item / Attribute Pills ====== */
+.attribute-item,
+.size-badge {
+    display: inline-block;
+    padding: 0.3em 0.6em;
+    border-radius: 8px;
+    font-size: 0.85em;
+    margin: 0.1em;
+    word-break: break-word;
+    background: #f8f9fa;
+    color: #495057;
+}
+.attribute-item.event {
+    background: #e3f2fd;
+    color: #1565c0;
+}
+.attribute-item.object {
+    background: #9bdad6;
+    color: #065084;
+}
+
+/* ====== No-Data Placeholder ====== */
+.no-data {
+    text-align: center;
+    padding: 3rem;
+    color: #6c757d;
+}
+
+/* ====== Scroll-to-Top Button ====== */
+#scrollToTopBtn {
+    display: none;
+    position: fixed;
+    bottom: 30px;
+    right: 30px;
+    z-index: 99;
+    background: #555;
+    color: #fff;
+    width: 50px;
+    height: 50px;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 22px;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    transition: background-color 0.2s;
+}
+#scrollToTopBtn:hover {
+    background-color: #333;
+}

@@ -18,6 +18,7 @@ from werkzeug.utils import secure_filename
 from config import ALLOWED_EXTENSIONS, DATA_FOLDER, MAX_CONTENT_LENGTH, UPLOAD_FOLDER
 from src.aggregation import handle_aggregate_attributes
 from src.mining import (
+    _apply_intervals_to_ocel,
     association_rule_to_json,
     frequent_itemset_to_json,
     generate_association_rules,
@@ -262,7 +263,36 @@ def show_classification_rules():
 @app.route("/download/ocel")
 def download_ocel():
     """Download the exported OCEL JSON."""
+    with open(os.path.join(DATA_FOLDER, "items.json")) as f:
+        items = json.load(f)
+
+    agg_items = {}
+
+    for item in items:
+        if item.get("aggregate", "") != "":
+            attribute_name = item["attribute"]
+
+            if attribute_name not in agg_items:
+                agg_items[attribute_name] = {
+                    "attribute": attribute_name,
+                    "type": "EVENT",
+                    "qualifier": item.get("qualifier"),
+                    "aggregate": item.get("aggregate"),
+                    "intervals": []
+                }
+
+            if "interval" in item:
+                agg_items[attribute_name]["intervals"].append(item["interval"])
+
+    agg_items = list(agg_items.values())
+
+    for item in agg_items:
+        intervals = item.get("intervals", "")
+        intervals = [(interval.get("start", 0), interval.get("end", 0)) for interval in item.get("intervals", "")]
+        _apply_intervals_to_ocel(item, intervals, {})
+
     ocel = load_ocel(os.path.join(DATA_FOLDER, "ocel.json"))
+
     for df in (ocel.events, ocel.objects):
         temp_cols = [col for col in df.columns if col.startswith("__") and col.endswith("__")]
         for temp in temp_cols:

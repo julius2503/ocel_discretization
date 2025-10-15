@@ -117,7 +117,7 @@ def perform_chi_merge_binning(ocel: OCEL, attribute: Dict[str, Any], ids: List[A
     """ChiMerge algorithm merging adjacent bins by chi-square test."""
     numeric_attr = attribute.get("attribute", "")
 
-    df = ocel.events if attribute.get("type") == "EVENT" else ocel.objects
+    df = ocel.events if attribute.get("type") == "EVENT" or attribute.get("aggregation", "") else ocel.objects
     for col in [df.columns[0], numeric_attr]:
         if col not in df.columns:
             raise KeyError(f"Required column '{col}' not found in DataFrame")
@@ -164,6 +164,19 @@ def perform_chi_merge_binning(ocel: OCEL, attribute: Dict[str, Any], ids: List[A
 
         intervals[idx:idx+2] = [(start1, end2, merged_counts)]
 
+    while len(intervals) > max_intervals:
+        chi_vals = [
+            _chi2_stat(intervals[i][2], intervals[i+1][2])
+            for i in range(len(intervals) - 1)
+        ]
+
+        idx = chi_vals.index(min(chi_vals))
+        start1, _, counts1 = intervals[idx]
+        _, end2, counts2 = intervals[idx + 1]
+        merged_counts = counts1.add(counts2, fill_value=0)
+
+        intervals[idx:idx+2] = [(start1, end2, merged_counts)]
+
     return [(start, end) for start, end, _ in intervals]
 
 
@@ -202,7 +215,7 @@ def _map_attribute_label(ocel: OCEL, ids: List[Any], attribute: Dict[str, Any], 
     """
     Build DataFrame with original numeric attribute and associated label.
     """
-    df = ocel.events if attribute.get("type", "") == "EVENT" else ocel.objects
+    df = ocel.events if attribute.get("type", "") == "EVENT" or attribute.get("aggregation", "") else ocel.objects
     df = df.loc[df[df.columns[0]].isin(ids), ["ocel:eid", attribute.get("attribute", "")]].copy()
 
     for label in labels:

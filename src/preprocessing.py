@@ -44,6 +44,8 @@ def load_ocel(file_path: str) -> OCEL:
         return pm4py.read_ocel2_json(file_path=file_path)
     if ext == "sqlite":
         return pm4py.read_ocel2_sqlite(file_path=file_path)
+    if ext == "xml":
+        return pm4py.read_ocel2_xml(file_path=file_path)
     raise ValueError(f"Unsupported OCEL file type: .{ext}")
 
 

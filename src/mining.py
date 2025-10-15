@@ -55,10 +55,11 @@ def run_itemize(ocel: OCEL, attribute: Dict[str, Any]) -> List[Dict]:
 
         elif type == "OBJECT":
             df = split_numerical_attribute(ocel, type, splits)
+            obj_ids = df["ocel:oid"].tolist()
             if aggregation:
                 df = ocel.events
                 values = df[attr].astype(float).tolist()
-                ids = []
+                ids = ocel.relations.loc[ocel.relations["ocel:oid"].isin(obj_ids) ,"ocel:eid"].unique()
             else:
                 values = df[df["ocel:type"] == qualifier][attr].astype(float).tolist()
                 ids = df[df["ocel:type"] == qualifier]["ocel:oid"].tolist()
@@ -145,6 +146,9 @@ def _apply_intervals_to_ocel(
         id_col = "ocel:oid"
         base_mask = df["ocel:type"] == qualifier
 
+    if attribute.get("aggregate", ""):
+        base_mask = df[attr] != ""
+
     df[attr].astype(float)
     temp_col = f"__{attr}__"
     df[temp_col] = None
@@ -207,7 +211,7 @@ def transform_ocel(ocel: OCEL, items: List[Dict[str, Any]]) -> pd.DataFrame:
                 continue
 
             mapping = item.get("mapping")
-            if mapping is not None:
+            if mapping:
                 if eid in mapping:
                     trans.append(f"{item.get('attribute', '')}_{item.get('type', '')}_{item.get('qualifier', '')}_{item.get('interval', {}).get('start', -1)}-{item.get('interval', {}).get('end', -1)}")
                 continue
@@ -227,12 +231,12 @@ def transform_ocel(ocel: OCEL, items: List[Dict[str, Any]]) -> pd.DataFrame:
                 continue
 
             mapping = item.get("mapping")
-            if mapping is not None:
+            if mapping:
                 if eid in mapping:
                     trans.append(f"{item.get('attribute', '')}_{item.get('type', '')}_{item.get('qualifier', '')}_{item.get('interval', {}).get('start', -1)}-{item.get('interval', {}).get('end', -1)}")
                 continue
 
-            if item.get("aggregate", None):
+            if item.get("aggregate", ""):
                 col = ev_df[item.get("attribute", "")]
                 mask = col.between(item.get("interval", {}).get("start", -1), item.get("interval", {}).get("end", -1))
                 if mask.any():
