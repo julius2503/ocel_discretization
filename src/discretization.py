@@ -198,14 +198,36 @@ def perform_kmeans_clustering(ocel: OCEL, values: List[float], attribute: Dict[s
     kmeans = KMeans(n_clusters=n_clusters, random_state=42)
     cluster_labels = kmeans.fit_predict(X_scaled)
 
-    intervals: List[Tuple[float, float]] = []
+    cluster_info = []
     for cid in range(n_clusters):
         subset = X_num[cluster_labels == cid].flatten()
         if subset.size == 0:
-            intervals.append((float("nan"), float("nan")))
+            cluster_info.append({
+                'original_cluster_id': cid,
+                'min': float("nan"),
+                'max': float("nan")
+            })
         else:
-            intervals.append((float(subset.min()), float(subset.max())))
-    intervals.sort(key=lambda iv: iv[0])
+            cluster_info.append({
+                'original_cluster_id': cid,
+                'min': float(subset.min()),
+                'max': float(subset.max())
+            })
+
+    cluster_info = sorted(cluster_info, key=lambda x: x['min'])
+
+    original_to_sorted = {
+        info['original_cluster_id']: i
+        for i, info in enumerate(cluster_info)
+    }
+
+    cluster_labels = np.array([
+        original_to_sorted[cl] for cl in cluster_labels
+    ])
+
+    intervals: List[Tuple[float, float]] = [
+        (info['min'], info['max']) for info in cluster_info
+    ]
 
     id_to_cluster = {eid: int(cl) for eid, cl in zip(ids, cluster_labels)}
 
