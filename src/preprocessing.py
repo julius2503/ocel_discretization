@@ -83,39 +83,41 @@ def _populate_related(ocel: OCEL, descriptors: List[Dict[str, Any]]) -> None:
         qualifier = base.get("qualifier", "")
 
         for other in descriptors:
-            if (
-                other.get("type") == type
-                and other.get("qualifier") == qualifier
-                and other.get("attribute") != attr
-            ):
-                base.get("related", []).append({
-                    "attribute": other.get("attribute", ""),
-                    "type": other.get("type", ""),
-                    "qualifier": other.get("qualifier", ""),
-                    "vals": _vals(other.get("attribute", ""), qualifier, type)
-                })
+            if other.get("type") == type and other.get("qualifier") == qualifier and other.get("attribute") != attr:
+                base.get("related", []).append(
+                    {
+                        "attribute": other.get("attribute", ""),
+                        "type": other.get("type", ""),
+                        "qualifier": other.get("qualifier", ""),
+                        "vals": _vals(other.get("attribute", ""), qualifier, type),
+                    }
+                )
 
         rel = ocel.relations
         if type == "EVENT":
             for obj_t in pd.DataFrame(rel[rel["ocel:activity"] == qualifier])["ocel:type"].unique():
                 for other in descriptors:
                     if other.get("type") == "OBJECT" and other.get("qualifier") == obj_t:
-                        base.get("related", []).append({
-                            "attribute": other.get("attribute", ""),
-                            "type": "OBJECT",
-                            "qualifier": obj_t,
-                            "vals": _vals(other.get("attribute", ""), obj_t, "OBJECT")
-                        })
+                        base.get("related", []).append(
+                            {
+                                "attribute": other.get("attribute", ""),
+                                "type": "OBJECT",
+                                "qualifier": obj_t,
+                                "vals": _vals(other.get("attribute", ""), obj_t, "OBJECT"),
+                            }
+                        )
         else:
             for act in pd.DataFrame(rel[rel["ocel:type"] == qualifier])["ocel:activity"].unique():
                 for other in descriptors:
                     if other.get("type") == "EVENT" and other.get("qualifier") == act:
-                        base.get("related", []).append({
-                            "attribute": other.get("attribute", ""),
-                            "type": "EVENT",
-                            "qualifier": act,
-                            "vals": _vals(other.get("attribute", ""), act, "EVENT")
-                        })
+                        base.get("related", []).append(
+                            {
+                                "attribute": other.get("attribute", ""),
+                                "type": "EVENT",
+                                "qualifier": act,
+                                "vals": _vals(other.get("attribute", ""), act, "EVENT"),
+                            }
+                        )
 
 
 def get_attributes(ocel: OCEL) -> List[Dict[str, Any]]:
@@ -151,22 +153,12 @@ def get_attributes(ocel: OCEL) -> List[Dict[str, Any]]:
     for attr in [c for c in events.columns if c not in event_core]:
         quals = pd.DataFrame(events[events[attr].notna()])["ocel:activity"].unique()
         for qual in quals:
-            descriptors.append({
-                "attribute": attr,
-                "type": "EVENT",
-                "qualifier": qual,
-                "related": []
-            })
+            descriptors.append({"attribute": attr, "type": "EVENT", "qualifier": qual, "related": []})
 
     for attr in [c for c in objects.columns if c not in object_core]:
         quals = pd.DataFrame(objects[objects[attr].notna()])["ocel:type"].unique()
         for qual in quals:
-            descriptors.append({
-                "attribute": attr,
-                "type": "OBJECT",
-                "qualifier": qual,
-                "related": []
-            })
+            descriptors.append({"attribute": attr, "type": "OBJECT", "qualifier": qual, "related": []})
 
     _populate_related(ocel, descriptors)
     return descriptors
@@ -223,8 +215,7 @@ def split_numerical_attribute(ocel: OCEL, type: str, splits: List[Dict[str, Any]
                     df = pd.DataFrame(df[df[split.get("attribute", "")].astype(float).between(start, end)])
             else:
                 oids = ocel.objects[
-                    (ocel.objects["ocel:type"] == split.get("qualifier", "")) &
-                    (ocel.objects[split.get("attribute", "")].astype(str) == val)
+                    (ocel.objects["ocel:type"] == split.get("qualifier", "")) & (ocel.objects[split.get("attribute", "")].astype(str) == val)
                 ]["ocel:oid"]
                 eids = rel[rel["ocel:oid"].isin(pd.Series(oids))]["ocel:eid"]
                 df = pd.DataFrame(df[pd.Series(df["ocel:eid"]).isin(pd.Series(eids))])
@@ -236,7 +227,7 @@ def split_numerical_attribute(ocel: OCEL, type: str, splits: List[Dict[str, Any]
             val = split.get("selected_value", "")
             if val is None:
                 continue
-            df = pd.DataFrame(df[(df["ocel:type"] == split.get("qualifier", "")) &(df[split.get("attribute", "")].astype(str) == val)])
+            df = pd.DataFrame(df[(df["ocel:type"] == split.get("qualifier", "")) & (df[split.get("attribute", "")].astype(str) == val)])
         return df
 
     raise ValueError(f"Unknown entity_type: {type}")

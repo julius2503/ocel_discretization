@@ -9,6 +9,7 @@ from src.mining import run_itemize
 
 logger = logging.getLogger(__name__)
 
+
 def handle_aggregate_attributes(ocel: OCEL, aggregation_attribute: dict) -> Tuple[OCEL, List[dict]]:
     """
     Aggregate an object attribute over related events.
@@ -38,10 +39,7 @@ def handle_aggregate_attributes(ocel: OCEL, aggregation_attribute: dict) -> Tupl
     merged = rels.merge(ocel.objects[[ocel.object_id_column, attribute]], on=ocel.object_id_column, how="left")
 
     column_name = f"{agg_func.capitalize()}{attribute.capitalize()}({qualifier.capitalize()})"
-    grouped = pd.DataFrame(
-        merged.groupby("ocel:eid", as_index=False)
-                .agg(**{column_name: (attribute, agg_func)})
-    )
+    grouped = pd.DataFrame(merged.groupby("ocel:eid", as_index=False).agg(**{column_name: (attribute, agg_func)}))
     grouped[column_name] = grouped[column_name].round(2)
 
     updated_ocel = copy.deepcopy(ocel)

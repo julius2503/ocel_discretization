@@ -42,6 +42,7 @@ app.config.update(
 os.makedirs(DATA_FOLDER, exist_ok=True)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+
 @app.template_filter("file_extension")
 def file_extension(filename):
     """Extract uppercase file extension or return empty string."""
@@ -158,14 +159,10 @@ def handle_aggregation():
             "type": attr.get("type", ""),
             "qualifier": attr.get("qualifier", ""),
             "vals": [{"value": str(interval)} for interval in intervals],
-            "aggregation": attr.get("aggregation", "")
+            "aggregation": attr.get("aggregation", ""),
         }
 
-        return jsonify(
-            status="success",
-            aggregated_attribute=aggregated_attr,
-            message=f"Aggregation completed for {attr['attribute']}"
-        )
+        return jsonify(status="success", aggregated_attribute=aggregated_attr, message=f"Aggregation completed for {attr['attribute']}")
 
     except Exception as e:
         logger.exception("Failed to perform aggregation")
@@ -219,9 +216,11 @@ def mine():
             except (TypeError, ValueError, KeyError) as e:
                 return jsonify(status="failed", message=f"Invalid target format: {e}"), 400
             rules_df = generate_association_rules(frequent_itemsets, min_conf, min_lift)
+
             def all_consequents_in_target(consequents: frozenset) -> bool:
                 attrs = {item_str.split("_", 1)[0] for item_str in consequents}
                 return attrs == target_attrs
+
             filtered_df = pd.DataFrame(rules_df[rules_df["consequents"].apply(all_consequents_in_target)])
             result = association_rule_to_json(filtered_df)
             target_file, endpoint = "classification_rules.json", "show_classification_rules"
@@ -260,6 +259,7 @@ def show_classification_rules():
 
     return render_template("classification_rules.html", rules=rules)
 
+
 @app.route("/download/ocel")
 def download_ocel():
     """Download the exported OCEL JSON."""
@@ -278,7 +278,7 @@ def download_ocel():
                     "type": "EVENT",
                     "qualifier": item.get("qualifier"),
                     "aggregate": item.get("aggregate"),
-                    "intervals": []
+                    "intervals": [],
                 }
 
             if "interval" in item:
@@ -302,12 +302,8 @@ def download_ocel():
 
     save_ocel(ocel, os.path.join(DATA_FOLDER, "export_ocel.json"))
 
-    return send_from_directory(
-        directory=DATA_FOLDER,
-        path="export_ocel.json",
-        as_attachment=True,
-        mimetype="application/json"
-    )
+    return send_from_directory(directory=DATA_FOLDER, path="export_ocel.json", as_attachment=True, mimetype="application/json")
+
 
 @app.route("/download/pattern/<pattern_name>")
 def download_pattern(pattern_name):
@@ -316,12 +312,8 @@ def download_pattern(pattern_name):
     pattern_name should match the basename of the JSON file without extension.
     """
     filename = f"{pattern_name}.json"
-    return send_from_directory(
-        directory=DATA_FOLDER,
-        path=filename,
-        as_attachment=True,
-        mimetype="application/json"
-    )
+    return send_from_directory(directory=DATA_FOLDER, path=filename, as_attachment=True, mimetype="application/json")
+
 
 if __name__ == "__main__":
     app.run(debug=True)

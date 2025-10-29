@@ -59,7 +59,7 @@ def run_itemize(ocel: OCEL, attribute: Dict[str, Any]) -> List[Dict]:
             if aggregation:
                 df = ocel.events
                 values = df[attr].astype(float).tolist()
-                ids = ocel.relations.loc[ocel.relations["ocel:oid"].isin(obj_ids) ,"ocel:eid"].unique()
+                ids = ocel.relations.loc[ocel.relations["ocel:oid"].isin(obj_ids), "ocel:eid"].unique()
             else:
                 values = df[df["ocel:type"] == qualifier][attr].astype(float).tolist()
                 ids = df[df["ocel:type"] == qualifier]["ocel:oid"].tolist()
@@ -75,7 +75,6 @@ def run_itemize(ocel: OCEL, attribute: Dict[str, Any]) -> List[Dict]:
             for eid, cid in id_to_cluster.items():
                 cluster_to_ids.setdefault(cid, []).append(eid)
 
-
         return [
             {
                 "attribute": attr,
@@ -83,24 +82,26 @@ def run_itemize(ocel: OCEL, attribute: Dict[str, Any]) -> List[Dict]:
                 "qualifier": qualifier,
                 "interval": {"start": start, "end": end},
                 "aggregate": aggregation,
-                "mapping": cluster_to_ids.get(idx, [])
+                "mapping": cluster_to_ids.get(idx, []),
             }
             for idx, (start, end) in enumerate(intervals)
         ]
 
     if type == "EVENT":
-        values = ocel.events.loc[
-            ocel.events["ocel:activity"] == qualifier, attr
-        ].astype(str).unique()
+        values = ocel.events.loc[ocel.events["ocel:activity"] == qualifier, attr].astype(str).unique()
     elif type == "OBJECT":
-        values = ocel.objects.loc[
-            ocel.objects["ocel:type"] == qualifier, attr
-        ].astype(str).unique()
+        values = ocel.objects.loc[ocel.objects["ocel:type"] == qualifier, attr].astype(str).unique()
     else:
         raise ValueError(f"Unknown type for categorical attribute: {type}")
 
     return [
-        {"attribute": attr, "type": type, "qualifier": qualifier, "value": val, "aggregate": aggregation}
+        {
+            "attribute": attr,
+            "type": type,
+            "qualifier": qualifier,
+            "value": val,
+            "aggregate": aggregation,
+        }
         for val in values
     ]
 
@@ -108,7 +109,7 @@ def run_itemize(ocel: OCEL, attribute: Dict[str, Any]) -> List[Dict]:
 def _apply_intervals_to_ocel(
     attribute: Dict[str, Any],
     intervals: List[Tuple[float, float]],
-    id_to_cluster: Dict[Any, int] | None
+    id_to_cluster: Dict[Any, int] | None,
 ) -> None:
     """
     Saves a new OCEL where the numeric values of one attribute have been
@@ -156,6 +157,7 @@ def _apply_intervals_to_ocel(
     interval_labels = [f"[{start}-{end}]" for start, end in intervals]
 
     if id_to_cluster:
+
         def map_interval_by_id(eid):
             cid = id_to_cluster.get(eid)
             if cid is None or cid < 0 or cid >= len(interval_labels):
@@ -170,6 +172,7 @@ def _apply_intervals_to_ocel(
             df.loc[mask, temp_col] = label
 
     save_ocel(ocel, os.path.join(DATA_FOLDER, "ocel.json"))
+
 
 def transform_ocel(ocel: OCEL, items: List[Dict[str, Any]]) -> pd.DataFrame:
     """
@@ -196,7 +199,7 @@ def transform_ocel(ocel: OCEL, items: List[Dict[str, Any]]) -> pd.DataFrame:
 
     event_groups = {eid: df for eid, df in ocel.events.groupby("ocel:eid")}
     relation_groups = ocel.relations.groupby("ocel:eid")["ocel:oid"].apply(set).to_dict()
-    object_groups = {eid: ocel.objects[ocel.objects["ocel:oid"].isin(oids)]for eid, oids in relation_groups.items()}
+    object_groups = {eid: ocel.objects[ocel.objects["ocel:oid"].isin(oids)] for eid, oids in relation_groups.items()}
 
     transactions: list[list[str]] = []
     event_items = [item for item in items if item.get("type", "") == "EVENT"]
@@ -213,46 +216,66 @@ def transform_ocel(ocel: OCEL, items: List[Dict[str, Any]]) -> pd.DataFrame:
             mapping = item.get("mapping")
             if mapping:
                 if eid in mapping:
-                    trans.append(f"{item.get('attribute', '')}_{item.get('type', '')}_{item.get('qualifier', '')}_{item.get('interval', {}).get('start', -1)}-{item.get('interval', {}).get('end', -1)}")
+                    trans.append(
+                        f"{item.get('attribute', '')};_;{item.get('type', '')};_;{item.get('qualifier', '')};_;{item.get('interval', {}).get('start', -1)}-{item.get('interval', {}).get('end', -1)}"
+                    )
                 continue
 
             col = ev_df[item.get("attribute", "")]
 
             if "interval" in item:
-                mask = col.between(item.get("interval", {}).get("start", -1), item.get("interval", {}).get("end", -1))
+                mask = col.between(
+                    item.get("interval", {}).get("start", -1),
+                    item.get("interval", {}).get("end", -1),
+                )
                 if mask.any():
-                    trans.append(f"{item.get('attribute', '')}_{item.get('type', '')}_{item.get('qualifier', '')}_{item.get('interval', {}).get('start', -1)}-{item.get('interval', {}).get('end', -1)}")
+                    trans.append(
+                        f"{item.get('attribute', '')};_;{item.get('type', '')};_;{item.get('qualifier', '')};_;{item.get('interval', {}).get('start', -1)}-{item.get('interval', {}).get('end', -1)}"
+                    )
             elif "value" in item:
                 if (col.astype(str) == str(item.get("value", ""))).any():
-                    trans.append(f"{item.get('attribute', '')}_{item.get('type', '')}_{item.get('qualifier', '')}_{item.get('value', '')}")
+                    trans.append(f"{item.get('attribute', '')};_;{item.get('type', '')};_;{item.get('qualifier', '')};_;{item.get('value', '')}")
 
         for item in object_items:
-            if item.get("qualifier", '') not in pd.DataFrame(obj_df["ocel:type"]).values:
+            if item.get("qualifier", "") not in pd.DataFrame(obj_df["ocel:type"]).values:
                 continue
 
             mapping = item.get("mapping")
             if mapping:
                 if eid in mapping:
-                    trans.append(f"{item.get('attribute', '')}_{item.get('type', '')}_{item.get('qualifier', '')}_{item.get('interval', {}).get('start', -1)}-{item.get('interval', {}).get('end', -1)}")
+                    trans.append(
+                        f"{item.get('attribute', '')};_;{item.get('type', '')};_;{item.get('qualifier', '')};_;{item.get('interval', {}).get('start', -1)}-{item.get('interval', {}).get('end', -1)}"
+                    )
                 continue
 
             if item.get("aggregate", ""):
                 col = ev_df[item.get("attribute", "")]
-                mask = col.between(item.get("interval", {}).get("start", -1), item.get("interval", {}).get("end", -1))
+                mask = col.between(
+                    item.get("interval", {}).get("start", -1),
+                    item.get("interval", {}).get("end", -1),
+                )
                 if mask.any():
-                    trans.append(f"{item.get('attribute', '')}_{item.get('type', '')}_{item.get('qualifier', '')}_{item.get('interval', {}).get('start', -1)}-{item.get('interval', {}).get('end', -1)}")
+                    trans.append(
+                        f"{item.get('attribute', '')};_;{item.get('type', '')};_;{item.get('qualifier', '')};_;{item.get('interval', {}).get('start', -1)}-{item.get('interval', {}).get('end', -1)}"
+                    )
                 continue
 
             col = pd.Series(obj_df[item.get("attribute", "")])
             if "interval" in item:
-                mask = col.between(item.get("interval", {}).get("start", -1), item.get("interval", {}).get("end", -1))
+                mask = col.between(
+                    item.get("interval", {}).get("start", -1),
+                    item.get("interval", {}).get("end", -1),
+                )
                 if mask.any():
-                    trans.append(f"{item.get('attribute', '')}_{item.get('type', '')}_{item.get('qualifier', '')}_{item.get('interval', {}).get('start', -1)}-{item.get('interval', {}).get('end', -1)}")
+                    trans.append(
+                        f"{item.get('attribute', '')};_;{item.get('type', '')};_;{item.get('qualifier', '')};_;{item.get('interval', {}).get('start', -1)}-{item.get('interval', {}).get('end', -1)}"
+                    )
             elif "value" in item:
                 if (col.astype(str) == str(item.get("value", ""))).any():
-                    trans.append(f"{item.get('attribute', '')}_{item.get('type', '')}_{item.get('qualifier', '')}_{item.get('value', '')}")
+                    trans.append(f"{item.get('attribute', '')};_;{item.get('type', '')};_;{item.get('qualifier', '')};_;{item.get('value', '')}")
 
-        transactions.append(trans)
+        if trans:
+            transactions.append(trans)
 
     te = TransactionEncoder()
     te_ary = te.fit(transactions).transform(transactions)
@@ -276,10 +299,7 @@ def generate_frequent_itemsets(transactions: pd.DataFrame, min_support: float) -
     return apriori(transactions, min_support=min_support, use_colnames=True).sort_values("support", ascending=False)
 
 
-
-def generate_association_rules(
-    frequent_itemsets: pd.DataFrame, min_confidence: float, min_lift: float
-) -> pd.DataFrame:
+def generate_association_rules(frequent_itemsets: pd.DataFrame, min_confidence: float, min_lift: float) -> pd.DataFrame:
     """
     Derive association rules from frequent itemsets.
 
@@ -324,13 +344,8 @@ def frequent_itemset_to_json(frequent_itemsets: pd.DataFrame) -> List[Dict[str, 
         support = float(row["support"])
         items = []
         for item_str in row["itemsets"]:
-            attr, typ, qual, val = item_str.split("_", 3)
-            items.append({
-                "attribute": attr,
-                "type": typ,
-                "qualifier": qual,
-                "value": val
-            })
+            attr, typ, qual, val = item_str.split(";_;", 3)
+            items.append({"attribute": attr, "type": typ, "qualifier": qual, "value": val})
         result.append({"item": items, "support": round(support, 4)})
     return result
 
@@ -370,29 +385,21 @@ def association_rule_to_json(association_rules_df: pd.DataFrame) -> List[Dict[st
     for _, row in association_rules_df.iterrows():
         ant_items = []
         for ante in row["antecedents"]:
-            attr, typ, qual, val = ante.split("_", 3)
-            ant_items.append({
-                "attribute": attr,
-                "type": typ,
-                "qualifier": qual,
-                "value": val
-            })
+            attr, typ, qual, val = ante.split(";_;", 3)
+            ant_items.append({"attribute": attr, "type": typ, "qualifier": qual, "value": val})
 
         con_items = []
         for cons in row["consequents"]:
-            attr, typ, qual, val = cons.split("_", 3)
-            con_items.append({
-                "attribute": attr,
-                "type": typ,
-                "qualifier": qual,
-                "value": val
-            })
+            attr, typ, qual, val = cons.split(";_;", 3)
+            con_items.append({"attribute": attr, "type": typ, "qualifier": qual, "value": val})
 
-        result.append({
-            "antecedents": ant_items,
-            "consequents": con_items,
-            "support": round(float(row["support"]), 4),
-            "confidence": round(float(row["confidence"]), 4),
-            "lift": round(float(row["lift"]), 4),
-        })
+        result.append(
+            {
+                "antecedents": ant_items,
+                "consequents": con_items,
+                "support": round(float(row["support"]), 4),
+                "confidence": round(float(row["confidence"]), 4),
+                "lift": round(float(row["lift"]), 4),
+            }
+        )
     return result
