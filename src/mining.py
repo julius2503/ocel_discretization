@@ -58,7 +58,7 @@ def run_itemize(ocel: OCEL, attribute: Dict[str, Any]) -> List[Dict]:
             obj_ids = df["ocel:oid"].tolist()
             if aggregation:
                 df = ocel.events
-                values = df[attr].astype(float).tolist()
+                values = df[attr].astype(float).dropna().tolist()
                 ids = ocel.relations.loc[ocel.relations["ocel:oid"].isin(obj_ids), "ocel:eid"].unique()
             else:
                 values = df[df["ocel:type"] == qualifier][attr].astype(float).tolist()
