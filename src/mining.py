@@ -196,6 +196,7 @@ def transform_ocel(ocel: OCEL, items: List[Dict[str, Any]]) -> pd.DataFrame:
     Output:
         DataFrame where rows are event IDs and columns are item strings; True if present.
     """
+    relevant_qualifiers = {item.get("qualifier", "") for item in items if item.get("qualifier", "")}
 
     event_groups = {eid: df for eid, df in ocel.events.groupby("ocel:eid")}
     relation_groups = ocel.relations.groupby("ocel:eid")["ocel:oid"].apply(set).to_dict()
@@ -206,6 +207,9 @@ def transform_ocel(ocel: OCEL, items: List[Dict[str, Any]]) -> pd.DataFrame:
     object_items = [item for item in items if item.get("type", "") == "OBJECT"]
 
     for eid, ev_df in event_groups.items():
+        if ev_df["ocel:activity"].values[0] not in relevant_qualifiers:
+            continue
+
         trans: list[str] = []
         obj_df = object_groups.get(eid, pd.DataFrame())
 
